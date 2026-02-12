@@ -5,54 +5,6 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 import OpenAI from "openai";
 
-export const generateCompetencyDescriptions = action({
-  args: {
-    competencies: v.array(
-      v.object({
-        id: v.id("competencies"),
-        title: v.string(),
-        subCompetencies: v.array(v.object({ title: v.string() })),
-      })
-    ),
-  },
-  handler: async (ctx, args) => {
-    const client = new OpenAI();
-    const descriptions: Record<string, string> = {};
-
-    for (const comp of args.competencies) {
-      const subCompList = comp.subCompetencies
-        .map((sub) => `- ${sub.title}`)
-        .join("\n");
-
-      const prompt = `Given the competency "${comp.title}" with the following sub-competencies:\n\n${subCompList}\n\nWrite a concise, professional 1-2 sentence description that summarizes what this competency encompasses. The description should be clear and suitable for a professional competency framework.`;
-
-      const response = await client.chat.completions.create({
-        model: "gpt-4o",
-        max_tokens: 256,
-        messages: [
-          { role: "system", content: "You are a professional competency framework expert. Provide clear, concise descriptions." },
-          { role: "user", content: prompt },
-        ],
-      });
-
-      const text = response.choices[0]?.message?.content;
-      if (text) {
-        descriptions[comp.id] = text.trim();
-      }
-    }
-
-    // Update each competency with its description
-    for (const [id, description] of Object.entries(descriptions)) {
-      await ctx.runMutation(api.competencies.update, {
-        id: id as any,
-        description,
-      });
-    }
-
-    return descriptions;
-  },
-});
-
 export const generatePromotionPlan = action({
   args: {
     memberId: v.id("teamMembers"),

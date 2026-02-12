@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { CompetencyEditor } from "@/components/CompetencyEditor";
-import { GenerateDescriptionsButton } from "@/components/GenerateDescriptionsButton";
 import { CompetencyExportDialog } from "@/components/CompetencyExportDialog";
 import { CompetencyImportDialog } from "@/components/CompetencyImportDialog";
 import { Competency, SubCompetency } from "@/types/competency";
