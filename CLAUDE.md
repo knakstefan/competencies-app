@@ -1,122 +1,99 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Project Overview
 
 **Competency Manager (CM)** — A competency management platform for Product Designer roles. Tracks competencies across levels (Associate → Intermediate → Senior → Lead → Principal), manages team assessments, hiring pipelines, and generates AI-powered promotion plans.
 
 **Live site**: https://competencies-app.netlify.app
 
-## Tech Stack
+## Domain Context
 
-- **Frontend**: React 18 + TypeScript + Vite, Tailwind CSS, shadcn/ui (Radix primitives)
-- **Backend**: Convex (real-time database, serverless functions)
-- **Auth**: Clerk (email/password, `ConvexProviderWithClerk`)
-- **AI**: OpenAI GPT-4o via Convex actions (promotion plan generation)
-- **Hosting**: Netlify (auto-deploys from `main` branch)
+This app is a design management tool used by a design leader to evaluate and assess the skills of Product Designers on their team. The primary user is the manager; team members and other stakeholders may have viewer access.
 
-## Project Structure
+### Competency Framework
 
-```
-src/
-├── pages/           # Route-level components (ViewPage, TeamPage, ManagePage, HiringPage, UsersPage, Auth, AcceptInvite)
-├── components/      # Feature components + ui/ (shadcn)
-├── hooks/           # useAuth, useCompetencies, use-mobile, use-toast
-├── lib/             # Utils (competencyFormat.ts, utils.ts)
-├── types/           # TypeScript types (competency.ts, assessment.ts)
-├── App.tsx          # Router + AppLayout (auth guard)
-└── main.tsx         # Entry point (ClerkProvider + ConvexProviderWithClerk)
+The foundation of the app is a structured competency framework. Each **competency** (e.g., "Visual Design", "User Research") contains **sub-competencies**, and each sub-competency defines detailed criteria at five career levels: Associate, Intermediate, Senior, Lead, and Principal. This framework is the single source of truth for what "good" looks like at every level — it makes expectations explicit and evaluation consistent.
 
-convex/
-├── schema.ts        # Database schema (14 tables)
-├── ai.ts            # OpenAI GPT-4o action (generatePromotionPlan)
-├── competencies.ts  # Competency CRUD + ordering
-├── assessments.ts   # Assessment lifecycle
-├── teamMembers.ts   # Team member management
-├── candidates.ts    # Hiring candidate management
-├── users.ts         # Auth + role management
-├── auth.config.ts   # Clerk JWT config
-└── ...              # progress, evaluations, promotionPlans, etc.
-```
+### Team Assessments
 
-## Key Conventions
+The manager uses the framework to periodically assess each team member against the criteria for their current level and the next level up. Assessments produce a clear picture of where each person stands, what skills they've grown, and where gaps remain. Over time, multiple assessments reveal trends — whether someone is improving, plateauing, or declining in specific competencies. AI-generated promotion plans use this assessment data to create actionable development roadmaps.
 
-- **Convex document IDs**: Use `_id` (not `id`). Reference with `v.id("tableName")`.
-- **Field naming**: camelCase everywhere (e.g., `orderIndex`, `competencyId`, `associateLevel`).
-- **Data fetching**: `useQuery()` for reactive reads, `useMutation()` for writes, `useAction()` for AI/external calls. Never use `useState`/`useEffect` for data fetching.
-- **Imperative Convex client**: Use `useConvex()` from `convex/react` (not `useConvexClient`).
-- **Auth pattern**: `useAuth()` hook returns `{ user, isSignedIn, isLoaded, isAdmin, convexUser, handleSignOut }`. Admin check is `convexUser?.role === "admin"`.
-- **Role-based access**: Three roles — `admin`, `editor`, `viewer`. UI gates features behind `isAdmin`. Convex functions should check auth server-side.
-- **Component library**: shadcn/ui components in `src/components/ui/`. Import as `@/components/ui/...`.
-- **Path alias**: `@` maps to `src/` (configured in vite.config.ts and tsconfig).
+### Team Skill Mapping
 
-## Data Model (Key Tables)
+The team-level view aggregates individual assessments into a skill map, showing the overall team's strengths and weaknesses across all competencies. This helps the manager understand the collective capability of the team and identify which skills are well-covered and which are thin.
 
-| Table | Purpose | Key Indexes |
-|---|---|---|
-| `users` | Clerk-synced users with roles | by_clerkId, by_email |
-| `competencies` | Top-level competency areas | by_orderIndex |
-| `subCompetencies` | Level criteria per competency | by_competencyId |
-| `teamMembers` | Internal team members | by_name |
-| `assessments` | Member skill assessments | by_memberId, by_status |
-| `memberCompetencyProgress` | Per-sub-competency scores | by_assessmentId, by_memberId |
-| `criteriaEvaluations` | Individual criteria ratings | by_progressId |
-| `promotionPlans` | AI-generated development plans | by_memberId |
-| `hiringCandidates` | External candidates | by_currentStage |
-| `candidateAssessments` | Candidate evaluations | by_candidateId |
+### Hiring Assessments
 
-## Evaluation Scale
+The same competency framework is applied to evaluate candidates during the hiring process. Candidates go through assessment stages (competency evaluation, manager interview, portfolio review), each scored against the same criteria used for team members. This ensures hiring decisions are grounded in the same standards and directly informed by the team's skill gaps — the manager can prioritize candidates who complement the existing team's capabilities.
 
-Criteria are rated on a 5-point scale: `well_below` (1), `below` (2), `target` (3), `above` (4), `well_above` (5).
+### Design Principles
 
-## Routes
+The app should provide an intuitive, efficient way to accurately assess both team members and potential hires. Every feature should serve the goal of making skill evaluation clearer, faster, and more actionable. Avoid complexity that doesn't directly support assessment accuracy or decision-making.
 
-| Path | Page | Auth Required |
-|---|---|---|
-| `/` | ViewPage (competency framework viewer) | Yes |
-| `/team` | TeamPage (members, assessments, progress) | Yes |
-| `/manage` | ManagePage (edit competencies, import/export) | Yes |
-| `/hiring` | HiringPage (candidate pipeline) | Yes |
-| `/users` | UsersPage (user/role management) | Yes |
-| `/auth` | Clerk sign-in | No |
-| `/accept-invite` | Invitation acceptance | No |
-
-## Development
+## Build & Development Commands
 
 ```sh
-# Terminal 1: Convex backend
-npx convex dev
+# Development (requires two terminals)
+npx convex dev          # Terminal 1: Convex backend (syncs functions + generates types)
+npm run dev             # Terminal 2: Vite frontend on localhost:8080
 
-# Terminal 2: Vite frontend
-npm run dev        # runs on localhost:8080
+# Production build
+npm run build           # Vite build → dist/
+
+# Lint
+npm run lint            # ESLint
 ```
 
-### Environment Variables
+There are no tests configured in this project.
+
+## Architecture
+
+### Provider Chain
+
+`main.tsx` sets up the provider hierarchy: `ClerkProvider` → `ConvexProviderWithClerk` → `App`. Clerk handles authentication, Convex handles data. The `ConvexProviderWithClerk` bridge (from `convex/react-clerk`) passes Clerk's auth token to Convex automatically.
+
+### Auth Flow
+
+`AppLayout` in `App.tsx` wraps all authenticated routes. It uses the custom `useAuth()` hook (`src/hooks/useAuth.tsx`) which combines Clerk's `useUser()` with a Convex `users` table query. On first sign-in, `ensureUser` mutation auto-creates the Convex user record. Roles (`admin`/`editor`/`viewer`) are stored in the Convex `users` table, not in Clerk. The `isAdmin` check gates UI features like adding team members or generating plans.
+
+### Data Layer (Convex)
+
+All data lives in Convex. Frontend components use `useQuery()` for reactive reads, `useMutation()` for writes, and `useAction()` for server-side operations that call external APIs (OpenAI). Functions are referenced as `api.module.functionName` — types are auto-generated by `npx convex dev` into `convex/_generated/`.
+
+The imperative client is `useConvex()` from `convex/react` (not `useConvexClient` — that doesn't exist in this Convex version).
+
+Convex actions requiring Node.js APIs (like the OpenAI SDK in `convex/ai.ts`) must have `"use node"` at the top of the file.
+
+### Data Model Relationships
+
+The core data flows through these relationships:
+- `competencies` → `subCompetencies` (each competency has level-specific criteria arrays: `associateLevel`, `intermediateLevel`, etc.)
+- `teamMembers` → `assessments` → `memberCompetencyProgress` → `criteriaEvaluations` (assessment drill-down)
+- `hiringCandidates` → `candidateAssessments` → `candidateCompetencyProgress` → `candidateCriteriaEvaluations` (parallel hiring track)
+- `teamMembers` → `promotionPlans` (AI-generated via `convex/ai.ts`)
+
+Criteria evaluations use a 5-point scale: `well_below` (1), `below` (2), `target` (3), `above` (4), `well_above` (5).
+
+### Key Conventions
+
+- **Document IDs**: Always `_id` (Convex convention), never `id`. References use `v.id("tableName")`.
+- **Field naming**: camelCase everywhere (e.g., `orderIndex`, `competencyId`, `associateLevel`).
+- **Path alias**: `@` maps to `src/` — use `@/components/...`, `@/hooks/...`, etc.
+- **UI components**: shadcn/ui in `src/components/ui/`. Feature components directly in `src/components/`.
+- **Theme**: Dark theme only (`defaultTheme="dark"` in ThemeProvider).
+
+## Environment Variables
 
 **Local `.env`**:
 - `VITE_CONVEX_URL` — Convex deployment URL
 - `VITE_CLERK_PUBLISHABLE_KEY` — Clerk publishable key
 
-**Convex Dashboard**:
-- `CLERK_JWT_ISSUER_DOMAIN` — Clerk issuer domain
-- `OPENAI_API_KEY` — For AI promotion plan generation
-
-## Common Tasks
-
-### Adding a new Convex function
-1. Add the function in the appropriate `convex/*.ts` file
-2. Convex auto-generates types — use `api.module.functionName` to reference
-3. On the frontend, use `useQuery`/`useMutation`/`useAction` from `convex/react`
-
-### Adding a new page
-1. Create component in `src/pages/`
-2. Add route in `src/App.tsx` wrapped with `<AppLayout>` for auth
-3. Add nav link in `src/components/Navbar.tsx`
-
-### Modifying the schema
-1. Edit `convex/schema.ts`
-2. Run `npx convex dev` to apply — Convex handles migrations automatically
-3. Update any affected queries/mutations
+**Convex Dashboard (server-side)**:
+- `CLERK_JWT_ISSUER_DOMAIN` — Clerk issuer domain (used in `convex/auth.config.ts`)
+- `OPENAI_API_KEY` — Used by `convex/ai.ts` for promotion plan generation
 
 ## Deployment
 
-Pushes to `main` auto-deploy to Netlify. Convex functions deploy separately via `npx convex deploy` (or automatically if `npx convex dev` is running during push).
+Pushes to `main` auto-deploy the frontend to Netlify. Convex functions deploy separately via `npx convex deploy` (production) or sync automatically when `npx convex dev` is running.
