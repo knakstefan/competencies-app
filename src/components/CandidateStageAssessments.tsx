@@ -115,10 +115,9 @@ export const CandidateStageAssessments = ({
     });
   };
 
-  const getScoreDisplay = (stage: string, score: number | null | undefined) => {
+  const getScoreDisplay = (_stage: string, score: number | null | undefined) => {
     if (score === null || score === undefined) return null;
-    const maxScore = stage === "manager_interview" ? 4 : 5;
-    return `${score.toFixed(1)}/${maxScore}`;
+    return `${score.toFixed(1)}/5`;
   };
 
   if (loading) {
@@ -164,6 +163,13 @@ export const CandidateStageAssessments = ({
                       <div>
                         <p className="font-medium">{STAGE_NAMES[stage]}</p>
                         <p className="text-sm text-muted-foreground">Not started</p>
+                        {isActiveStage && (
+                          <p className="text-xs text-muted-foreground/70 mt-1">
+                            {stage === "manager_interview" && "Covers background, collaboration style, and design approach through structured questions."}
+                            {stage === "portfolio_review" && "Evaluates design work across competency areas with level-specific criteria."}
+                            {stage === "team_interview" && "Assesses competencies against the framework criteria for the target level."}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

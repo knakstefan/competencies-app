@@ -26,6 +26,7 @@ export const HiringPipeline = ({ candidates }: HiringPipelineProps) => {
   const stageCounts = getStageCounts();
   const activeStages = STAGES.filter((s) => s.key !== "hired" && s.key !== "rejected");
   const totalActive = activeStages.reduce((sum, s) => sum + stageCounts[s.key], 0);
+  const maxCount = Math.max(...activeStages.map((s) => stageCounts[s.key]), 1);
 
   return (
     <Card>
@@ -44,7 +45,7 @@ export const HiringPipeline = ({ candidates }: HiringPipelineProps) => {
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                 <div 
                   className={`h-full ${stage.color}`}
-                  style={{ width: `${Math.min(stageCounts[stage.key] * 25, 100)}%` }}
+                  style={{ width: `${(stageCounts[stage.key] / maxCount) * 100}%` }}
                 />
               </div>
               <div className={`w-6 h-6 rounded-full ${stage.color} flex items-center justify-center text-xs font-bold text-white`}>

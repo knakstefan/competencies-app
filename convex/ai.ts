@@ -278,6 +278,7 @@ REQUIREMENTS:
     const response = await client.chat.completions.create({
       model: "gpt-4o",
       max_tokens: 4096,
+      response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -292,22 +293,47 @@ REQUIREMENTS:
     // Parse the JSON response
     let planStructure;
     try {
+      // With response_format: json_object, the response should be clean JSON,
+      // but handle code fences as a safety net
       const jsonMatch =
         planContent.match(/```json\s*([\s\S]*?)\s*```/) ||
         planContent.match(/```\s*([\s\S]*?)\s*```/);
       const jsonStr = jsonMatch ? jsonMatch[1] : planContent;
       planStructure = JSON.parse(jsonStr);
+
+      // Validate that required fields exist and aren't raw JSON strings
+      if (!planStructure.summary || typeof planStructure.summary !== "string") {
+        planStructure.summary = "Plan generated successfully. See details below.";
+      }
+      if (!Array.isArray(planStructure.strengths)) planStructure.strengths = [];
+      if (!Array.isArray(planStructure.developmentAreas)) planStructure.developmentAreas = [];
+      if (!Array.isArray(planStructure.resources)) planStructure.resources = [];
+      if (!Array.isArray(planStructure.milestones)) planStructure.milestones = [];
+      if (!planStructure.timeline || typeof planStructure.timeline !== "string") {
+        planStructure.timeline = "";
+      }
     } catch {
-      // Fallback
-      planStructure = {
-        summary: planContent,
-        strengths: [],
-        developmentAreas: [],
-        resources: [],
-        milestones: [],
-        timeline: "",
-        fullPlan: planContent,
-      };
+      // Fallback: try to extract any JSON object from the response
+      const jsonObjectMatch = planContent.match(/\{[\s\S]*\}/);
+      if (jsonObjectMatch) {
+        try {
+          planStructure = JSON.parse(jsonObjectMatch[0]);
+        } catch {
+          planStructure = null;
+        }
+      }
+
+      if (!planStructure) {
+        planStructure = {
+          summary: "The promotion plan could not be parsed. Please try regenerating.",
+          strengths: [],
+          developmentAreas: [],
+          resources: [],
+          milestones: [],
+          timeline: "",
+          fullPlan: planContent,
+        };
+      }
     }
 
     // Save to database

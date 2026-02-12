@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
@@ -21,27 +21,14 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { HiringCandidate } from "../HiringManagement";
-
-const INTERVIEW_QUESTIONS = [
-  "Can you summarize your background and experience and what makes you excited for the opportunity?",
-  "What were your first impressions after the interview with the recruiter?",
-  "When you think about the favorite team you've been apart of, what did you like most?",
-  "What did you dislike?",
-  "What would your favorite manager say is your biggest strength?",
-  "How do you balance quick execution with design quality?",
-  "Can you share an example of a time when engineering feedback changed your design direction?",
-  "What strategies do you use to quickly re-enter context after switching tasks?",
-  "Describe a situation where you helped align different perspectives across product, design, and engineering.",
-  "Tell me about a time you had to present a design direction that wasn't initially well understood. How did you build alignment?",
-  "How do you balance quantitative data with qualitative insights?",
-  "Have you designed experiences that include AI or automation? What challenges did you face?",
-];
+import { getInterviewQuestionsForRole } from "@/lib/interviewQuestions";
 
 const RATING_OPTIONS = [
-  { value: "strong", label: "Strong" },
-  { value: "meets_expectations", label: "Meets Expectations" },
-  { value: "needs_improvement", label: "Needs Improvement" },
-  { value: "weak", label: "Weak" },
+  { value: "well_above", label: "Well Above", hint: "Exceptional, exceeds all expectations for this level" },
+  { value: "above", label: "Above", hint: "Consistently strong, exceeds most expectations" },
+  { value: "target", label: "Target", hint: "Meets expectations for the target level" },
+  { value: "below", label: "Below", hint: "Partially meets expectations, development needed" },
+  { value: "well_below", label: "Well Below", hint: "Significant gaps, substantial development needed" },
 ];
 
 interface ManagerInterviewWizardProps {
@@ -63,6 +50,7 @@ export const ManagerInterviewWizard = ({
   candidate,
   existingAssessmentId,
 }: ManagerInterviewWizardProps) => {
+  const INTERVIEW_QUESTIONS = getInterviewQuestionsForRole(candidate.targetRole);
   const [currentStep, setCurrentStep] = useState(0);
   const [responses, setResponses] = useState<Record<number, Response>>({});
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
@@ -161,12 +149,17 @@ export const ManagerInterviewWizard = ({
   };
 
   const handleNext = async () => {
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
+    // Cancel pending debounce and save immediately
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const currentResp = responses[currentStep];
+    if (currentResp) {
       await saveResponse(
         currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.rating
+        currentResp.responseNotes || "",
+        currentResp.rating
       );
     }
 
@@ -184,22 +177,27 @@ export const ManagerInterviewWizard = ({
   const handleComplete = async () => {
     if (!assessmentId) return;
 
-    // Save current response first
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
+    // Cancel pending debounce and save immediately
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const currentResp = responses[currentStep];
+    if (currentResp) {
       await saveResponse(
         currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.rating
+        currentResp.responseNotes || "",
+        currentResp.rating
       );
     }
 
-    // Calculate overall score based on ratings
+    // Calculate overall score based on ratings (5-point scale)
     const ratingScores: Record<string, number> = {
-      strong: 4,
-      meets_expectations: 3,
-      needs_improvement: 2,
-      weak: 1,
+      well_above: 5,
+      above: 4,
+      target: 3,
+      below: 2,
+      well_below: 1,
     };
 
     let totalScore = 0;
@@ -244,6 +242,45 @@ export const ManagerInterviewWizard = ({
       },
     }));
   };
+
+  // Debounced auto-save
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const responsesRef = useRef(responses);
+  const currentStepRef = useRef(currentStep);
+  responsesRef.current = responses;
+  currentStepRef.current = currentStep;
+
+  const flushSave = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const step = currentStepRef.current;
+    const r = responsesRef.current[step];
+    if (r && assessmentId) {
+      saveResponse(step, r.responseNotes || "", r.rating);
+    }
+  }, [assessmentId]);
+
+  useEffect(() => {
+    const r = responses[currentStep];
+    if (!r || !assessmentId) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      saveResponse(currentStep, r.responseNotes || "", r.rating);
+      debounceRef.current = null;
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [responses, currentStep, assessmentId]);
+
+  // Flush on close
+  useEffect(() => {
+    return () => { flushSave(); };
+  }, [flushSave]);
 
   const currentResponse = responses[currentStep] || {
     questionIndex: currentStep,
@@ -300,7 +337,8 @@ export const ManagerInterviewWizard = ({
                   <SelectContent>
                     {RATING_OPTIONS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{option.hint}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>

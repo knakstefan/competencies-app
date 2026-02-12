@@ -1,4 +1,4 @@
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -12,11 +12,18 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
 
-const STAGES = [
+const INTERVIEW_STAGES = [
   { id: "manager_interview", label: "Manager Interview" },
   { id: "portfolio_review", label: "Portfolio Review" },
   { id: "team_interview", label: "Team Interview" },
 ];
+
+const TERMINAL_STAGES = [
+  { id: "hired", label: "Hired" },
+  { id: "rejected", label: "Rejected" },
+];
+
+const ALL_STAGES = [...INTERVIEW_STAGES, ...TERMINAL_STAGES];
 
 interface StageProgressIndicatorProps {
   currentStage: string;
@@ -32,7 +39,8 @@ export const StageProgressIndicator = ({
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [isChanging, setIsChanging] = useState(false);
 
-  const currentIndex = STAGES.findIndex((s) => s.id === currentStage);
+  const isTerminal = currentStage === "hired" || currentStage === "rejected";
+  const interviewIndex = INTERVIEW_STAGES.findIndex((s) => s.id === currentStage);
 
   const handleStageClick = (stageId: string) => {
     if (!isAdmin || !onStageChange || stageId === currentStage) return;
@@ -52,10 +60,10 @@ export const StageProgressIndicator = ({
 
   return (
     <>
-      <div className="flex items-center justify-center gap-2 py-4">
-        {STAGES.map((stage, index) => {
-          const isCompleted = index < currentIndex;
-          const isCurrent = index === currentIndex;
+      <div className="flex items-center justify-center gap-2 py-4 flex-wrap">
+        {INTERVIEW_STAGES.map((stage, index) => {
+          const isCompleted = isTerminal || index < interviewIndex;
+          const isCurrent = !isTerminal && index === interviewIndex;
           const isPending = stage.id === pendingStage;
 
           return (
@@ -84,12 +92,41 @@ export const StageProgressIndicator = ({
                 <span className="sm:hidden">{stage.label.split(" ")[0]}</span>
               </button>
 
-              {index < STAGES.length - 1 && (
+              {index < INTERVIEW_STAGES.length - 1 && (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
             </div>
           );
         })}
+
+        {isTerminal && (
+          <>
+            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <button
+              onClick={() => handleStageClick(currentStage === "hired" ? "rejected" : "hired")}
+              disabled={!isAdmin || isChanging}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
+                currentStage === "hired" && "bg-green-600 text-white",
+                currentStage === "rejected" && "bg-destructive text-destructive-foreground",
+                isAdmin && "hover:ring-2 hover:ring-primary/50 hover:ring-offset-2 cursor-pointer",
+                !isAdmin && "cursor-default"
+              )}
+            >
+              {currentStage === "hired" ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <X className="h-4 w-4" />
+              )}
+              <span className="hidden sm:inline">
+                {currentStage === "hired" ? "Hired" : "Rejected"}
+              </span>
+              <span className="sm:hidden">
+                {currentStage === "hired" ? "Hired" : "Rejected"}
+              </span>
+            </button>
+          </>
+        )}
       </div>
 
       <AlertDialog open={!!pendingStage} onOpenChange={() => setPendingStage(null)}>
@@ -99,7 +136,7 @@ export const StageProgressIndicator = ({
             <AlertDialogDescription>
               Are you sure you want to move this candidate to{" "}
               <strong>
-                {STAGES.find((s) => s.id === pendingStage)?.label}
+                {ALL_STAGES.find((s) => s.id === pendingStage)?.label}
               </strong>
               ? This will update their position in the hiring pipeline.
             </AlertDialogDescription>

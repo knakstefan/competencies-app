@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import { TeamMemberForm } from "./TeamMemberForm";
-import { MemberProgressView } from "./MemberProgressView";
-import { PromotionPlan } from "./PromotionPlan";
 import { TeamMemberSkeleton } from "./skeletons/TeamMemberSkeleton";
 import { TeamSkillMapping } from "./TeamSkillMapping";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Pencil, Trash2, SlidersVertical, Plus, TrendingUp, BarChart3, ArrowLeft, MoreVertical, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Pencil, Trash2, SlidersVertical, Plus, BarChart3, MoreVertical, Users } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,8 @@ interface TeamMember {
   role: string;
   startDate: string;
   _creationTime: number;
+  assessmentCount: number;
+  lastAssessedAt: string | null;
 }
 
 interface TeamManagementProps {
@@ -43,10 +45,10 @@ interface TeamManagementProps {
 }
 
 export const TeamManagement = ({ isAdmin }: TeamManagementProps) => {
-  const teamMembers = useQuery(api.teamMembers.list);
+  const navigate = useNavigate();
+  const teamMembers = useQuery(api.teamMembers.listWithAssessmentSummary);
   const removeMember = useMutation(api.teamMembers.remove);
   const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
-  const [viewingMember, setViewingMember] = useState<TeamMember | null>(null);
   const [deletingMember, setDeletingMember] = useState<TeamMember | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("skills");
@@ -78,50 +80,6 @@ export const TeamManagement = ({ isAdmin }: TeamManagementProps) => {
       day: "numeric",
     });
   };
-
-  if (viewingMember) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-start justify-center text-center gap-4 relative">
-          <Button variant="outline" className="absolute left-0 cursor-pointer" onClick={() => setViewingMember(null)}>
-            <ArrowLeft className="h-8 w-8 mr-2" />
-            Back
-          </Button>
-
-          <div>
-            <h2 className="text-3xl font-bold">{viewingMember.name}</h2>
-            <p className="text-muted-foreground">
-              {viewingMember.role} • Started {formatDate(viewingMember.startDate)}
-            </p>
-          </div>
-        </div>
-
-        <Tabs defaultValue="progress" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2 mx-auto">
-            <TabsTrigger value="progress" className="gap-2">
-              <BarChart3 className="w-4 h-4" />
-              Assessment
-            </TabsTrigger>
-            <TabsTrigger value="promotion" className="gap-2">
-              <TrendingUp className="w-4 h-4" />
-              Progression Plan
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="progress">
-            <MemberProgressView
-              member={viewingMember}
-              isAdmin={isAdmin}
-            />
-          </TabsContent>
-
-          <TabsContent value="promotion">
-            <PromotionPlan member={viewingMember} isAdmin={isAdmin} />
-          </TabsContent>
-        </Tabs>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -155,9 +113,14 @@ export const TeamManagement = ({ isAdmin }: TeamManagementProps) => {
               {teamMembers === undefined ? (
                 <TeamMemberSkeleton />
               ) : teamMembers.length === 0 ? (
-                <p className="text-muted-foreground">
-                  No team members yet. {isAdmin && "Add your first team member above."}
-                </p>
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">
+                    No team members yet. {isAdmin && "Add your first team member above."}
+                  </p>
+                  <p className="text-sm text-muted-foreground/70 mt-2">
+                    Add team members to track their competency growth across levels and generate progression plans.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   {teamMembers.map((member) => (
@@ -168,12 +131,28 @@ export const TeamManagement = ({ isAdmin }: TeamManagementProps) => {
                       <div className="flex-1">
                         <h3
                           className="font-semibold cursor-pointer hover:text-primary"
-                          onClick={() => setViewingMember(member)}
+                          onClick={() => navigate(`/team/${member._id}`)}
                         >
                           {member.name}
                         </h3>
                         <p className="text-sm text-muted-foreground">{member.role}</p>
-                        <p className="text-xs text-muted-foreground mt-1">Started: {formatDate(member.startDate)}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <p className="text-xs text-muted-foreground">Started: {formatDate(member.startDate)}</p>
+                          {member.assessmentCount > 0 ? (
+                            <>
+                              <Badge variant="secondary" className="text-xs">
+                                {member.assessmentCount} assessment{member.assessmentCount !== 1 ? "s" : ""}
+                              </Badge>
+                              {member.lastAssessedAt && (
+                                <span className="text-xs text-muted-foreground">
+                                  Last assessed: {formatDate(member.lastAssessedAt)}
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/70">Not yet assessed</span>
+                          )}
+                        </div>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -186,7 +165,7 @@ export const TeamManagement = ({ isAdmin }: TeamManagementProps) => {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setViewingMember(member)}>
+                          <DropdownMenuItem onClick={() => navigate(`/team/${member._id}`)}>
                             <SlidersVertical className="h-4 w-4 mr-2" />
                             Assessment
                           </DropdownMenuItem>

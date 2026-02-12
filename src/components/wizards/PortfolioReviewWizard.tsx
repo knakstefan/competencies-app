@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
@@ -21,65 +21,14 @@ import {
 } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { HiringCandidate } from "../HiringManagement";
-
-interface PortfolioQuestion {
-  competencyArea: string;
-  subCompetencyTitle: string;
-  question: string;
-}
-
-const PORTFOLIO_QUESTIONS: PortfolioQuestion[] = [
-  // Product Thinking & Prioritization
-  {
-    competencyArea: "Product Thinking & Prioritization",
-    subCompetencyTitle: "Feature Definition & Prioritization",
-    question: "Walk me through how you scoped and prioritized features in one of your portfolio projects. What tradeoffs did you make?",
-  },
-  {
-    competencyArea: "Product Thinking & Prioritization",
-    subCompetencyTitle: "Analytical Thinking & Problem Solving",
-    question: "Can you describe the problem you were solving in this project? How did you validate that your solution addressed the core issue?",
-  },
-  // Visual, Interaction & Content Design
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Interaction & Visual Design Execution",
-    question: "Walk me through your design decisions for the visual and interaction patterns in this project. How did you ensure consistency?",
-  },
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Information Architecture & Content Design",
-    question: "How did you structure the information and content in this experience? What principles guided your decisions?",
-  },
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Accessibility & Inclusive Design",
-    question: "What accessibility considerations did you incorporate into this design? How did you validate it works for diverse users?",
-  },
-  // Communication & Collaboration
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Agile Practices & Cross-Functional Collaboration",
-    question: "How did you work with engineering and product teams on this project? What was your collaboration process?",
-  },
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Workshop Facilitation & Design Critique",
-    question: "How did you gather and incorporate feedback during this project? Did you facilitate any sessions with stakeholders?",
-  },
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Emotional Intelligence & Feedback",
-    question: "Tell me about a challenging conversation or difficult feedback you received on this project. How did you respond?",
-  },
-];
+import { getPortfolioQuestionsForRole, type PortfolioQuestion } from "@/lib/interviewQuestions";
 
 const COMPETENCY_LEVELS = [
-  { value: "well_above", label: "Well Above" },
-  { value: "above", label: "Above" },
-  { value: "target", label: "Target" },
-  { value: "below", label: "Below" },
-  { value: "well_below", label: "Well Below" },
+  { value: "well_above", label: "Well Above", hint: "Exceptional, exceeds all expectations for this level" },
+  { value: "above", label: "Above", hint: "Consistently strong, exceeds most expectations" },
+  { value: "target", label: "Target", hint: "Meets expectations for the target level" },
+  { value: "below", label: "Below", hint: "Partially meets expectations, development needed" },
+  { value: "well_below", label: "Well Below", hint: "Significant gaps, substantial development needed" },
 ];
 
 interface PortfolioReviewWizardProps {
@@ -101,6 +50,7 @@ export const PortfolioReviewWizard = ({
   candidate,
   existingAssessmentId,
 }: PortfolioReviewWizardProps) => {
+  const PORTFOLIO_QUESTIONS = getPortfolioQuestionsForRole(candidate.targetRole);
   const [currentStep, setCurrentStep] = useState(0);
   const [responses, setResponses] = useState<Record<number, Response>>({});
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
@@ -203,12 +153,17 @@ export const PortfolioReviewWizard = ({
   };
 
   const handleNext = async () => {
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
+    // Cancel pending debounce and save immediately
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const currentResp = responses[currentStep];
+    if (currentResp) {
       await saveResponse(
         currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.competencyLevel
+        currentResp.responseNotes || "",
+        currentResp.competencyLevel
       );
     }
 
@@ -226,13 +181,17 @@ export const PortfolioReviewWizard = ({
   const handleComplete = async () => {
     if (!assessmentId) return;
 
-    // Save current response first
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
+    // Cancel pending debounce and save immediately
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const currentResp = responses[currentStep];
+    if (currentResp) {
       await saveResponse(
         currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.competencyLevel
+        currentResp.responseNotes || "",
+        currentResp.competencyLevel
       );
     }
 
@@ -287,6 +246,45 @@ export const PortfolioReviewWizard = ({
       },
     }));
   };
+
+  // Debounced auto-save
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const responsesRef = useRef(responses);
+  const currentStepRef = useRef(currentStep);
+  responsesRef.current = responses;
+  currentStepRef.current = currentStep;
+
+  const flushSave = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    const step = currentStepRef.current;
+    const r = responsesRef.current[step];
+    if (r && assessmentId) {
+      saveResponse(step, r.responseNotes || "", r.competencyLevel);
+    }
+  }, [assessmentId]);
+
+  useEffect(() => {
+    const r = responses[currentStep];
+    if (!r || !assessmentId) return;
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      saveResponse(currentStep, r.responseNotes || "", r.competencyLevel);
+      debounceRef.current = null;
+    }, 500);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [responses, currentStep, assessmentId]);
+
+  // Flush on close
+  useEffect(() => {
+    return () => { flushSave(); };
+  }, [flushSave]);
 
   const currentResponse = responses[currentStep] || {
     questionIndex: currentStep,
@@ -354,7 +352,8 @@ export const PortfolioReviewWizard = ({
                   <SelectContent>
                     {COMPETENCY_LEVELS.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        <span>{option.label}</span>
+                        <span className="text-xs text-muted-foreground ml-2">{option.hint}</span>
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -1,27 +1,12 @@
 import { useState } from "react";
-import { useQuery, useMutation, useConvex } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, Plus, Edit, Trash2, Check } from "lucide-react";
+import { Plus, Edit, Trash2, Check } from "lucide-react";
 import { HiringCandidate } from "./HiringManagement";
 import {
   AlertDialog,
@@ -33,58 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-interface PortfolioQuestion {
-  competencyArea: string;
-  subCompetencyTitle: string;
-  question: string;
-}
-
-const PORTFOLIO_QUESTIONS: PortfolioQuestion[] = [
-  // Product Thinking & Prioritization
-  {
-    competencyArea: "Product Thinking & Prioritization",
-    subCompetencyTitle: "Feature Definition & Prioritization",
-    question: "Walk me through how you scoped and prioritized features in one of your portfolio projects. What tradeoffs did you make?",
-  },
-  {
-    competencyArea: "Product Thinking & Prioritization",
-    subCompetencyTitle: "Analytical Thinking & Problem Solving",
-    question: "Can you describe the problem you were solving in this project? How did you validate that your solution addressed the core issue?",
-  },
-  // Visual, Interaction & Content Design
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Interaction & Visual Design Execution",
-    question: "Walk me through your design decisions for the visual and interaction patterns in this project. How did you ensure consistency?",
-  },
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Information Architecture & Content Design",
-    question: "How did you structure the information and content in this experience? What principles guided your decisions?",
-  },
-  {
-    competencyArea: "Visual, Interaction & Content Design",
-    subCompetencyTitle: "Accessibility & Inclusive Design",
-    question: "What accessibility considerations did you incorporate into this design? How did you validate it works for diverse users?",
-  },
-  // Communication & Collaboration
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Agile Practices & Cross-Functional Collaboration",
-    question: "How did you work with engineering and product teams on this project? What was your collaboration process?",
-  },
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Workshop Facilitation & Design Critique",
-    question: "How did you gather and incorporate feedback during this project? Did you facilitate any sessions with stakeholders?",
-  },
-  {
-    competencyArea: "Communication & Collaboration",
-    subCompetencyTitle: "Emotional Intelligence & Feedback",
-    question: "Tell me about a challenging conversation or difficult feedback you received on this project. How did you respond?",
-  },
-];
+import { PortfolioReviewWizard } from "./wizards/PortfolioReviewWizard";
 
 const COMPETENCY_LEVELS = [
   { value: "well_above", label: "Well Above", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
@@ -100,29 +34,17 @@ interface PortfolioReviewAssessmentProps {
   onDataChange?: () => void;
 }
 
-interface Response {
-  questionIndex: number;
-  responseNotes: string | null;
-  competencyLevel: string | null;
-}
-
 export const PortfolioReviewAssessment = ({
   candidate,
   isAdmin,
   onDataChange,
 }: PortfolioReviewAssessmentProps) => {
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
-  const [responses, setResponses] = useState<Record<number, Response>>({});
   const [activeAssessmentId, setActiveAssessmentId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const client = useConvex();
-  const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
-  const completeMutation = useMutation(api.candidateAssessments.complete);
   const removeAssessment = useMutation(api.candidateAssessments.remove);
-  const upsertResponse = useMutation(api.portfolioResponses.upsert);
 
   const allAssessments = useQuery(api.candidateAssessments.listForCandidate, {
     candidateId: candidate._id as Id<"hiringCandidates">,
@@ -135,154 +57,20 @@ export const PortfolioReviewAssessment = ({
     .filter((a) => a.stage === "portfolio_review")
     .sort((a, b) => b._creationTime - a._creationTime);
 
-  const createAssessment = async () => {
-    try {
-      const id = await createDraftMutation({
-        candidateId: candidate._id as Id<"hiringCandidates">,
-        stage: "portfolio_review",
-      });
-
-      setActiveAssessmentId(id);
-      setResponses({});
-      setCurrentStep(0);
-      setWizardOpen(true);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create assessment",
-        variant: "destructive",
-      });
-    }
+  const createAssessment = () => {
+    setActiveAssessmentId(null);
+    setWizardOpen(true);
   };
 
-  const loadAssessment = async (assessmentId: string) => {
-    try {
-      const data = await client.query(api.portfolioResponses.listForAssessment, {
-        assessmentId: assessmentId as Id<"candidateAssessments">,
-      });
-
-      const responseMap: Record<number, Response> = {};
-      (data || []).forEach((r: any) => {
-        responseMap[r.questionIndex] = {
-          questionIndex: r.questionIndex,
-          responseNotes: r.responseNotes ?? null,
-          competencyLevel: r.competencyLevel ?? null,
-        };
-      });
-
-      setResponses(responseMap);
-      setActiveAssessmentId(assessmentId);
-      setCurrentStep(0);
-      setWizardOpen(true);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to load responses",
-        variant: "destructive",
-      });
-    }
+  const loadAssessment = (assessmentId: string) => {
+    setActiveAssessmentId(assessmentId);
+    setWizardOpen(true);
   };
 
-  const saveResponse = async (questionIndex: number, notes: string, level: string | null) => {
-    if (!activeAssessmentId) return;
-
-    const question = PORTFOLIO_QUESTIONS[questionIndex];
-
-    try {
-      await upsertResponse({
-        assessmentId: activeAssessmentId as Id<"candidateAssessments">,
-        candidateId: candidate._id as Id<"hiringCandidates">,
-        questionIndex,
-        competencyArea: question.competencyArea,
-        subCompetencyTitle: question.subCompetencyTitle,
-        questionText: question.question,
-        responseNotes: notes,
-        competencyLevel: level ?? undefined,
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to save response",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleNext = async () => {
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
-      await saveResponse(
-        currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.competencyLevel
-      );
-    }
-
-    if (currentStep < PORTFOLIO_QUESTIONS.length - 1) {
-      setCurrentStep(currentStep + 1);
-    }
-  };
-
-  const handleBack = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-    }
-  };
-
-  const handleComplete = async () => {
-    if (!activeAssessmentId) return;
-
-    // Save current response first
-    const currentResponse = responses[currentStep];
-    if (currentResponse) {
-      await saveResponse(
-        currentStep,
-        currentResponse.responseNotes || "",
-        currentResponse.competencyLevel
-      );
-    }
-
-    // Calculate overall score based on competency levels (1-5 scale)
-    const levelScores: Record<string, number> = {
-      well_below: 1,
-      below: 2,
-      target: 3,
-      above: 4,
-      well_above: 5,
-    };
-
-    let totalScore = 0;
-    let ratedCount = 0;
-    Object.values(responses).forEach((r) => {
-      if (r.competencyLevel && levelScores[r.competencyLevel]) {
-        totalScore += levelScores[r.competencyLevel];
-        ratedCount++;
-      }
-    });
-
-    const overallScore = ratedCount > 0 ? totalScore / ratedCount : undefined;
-
-    try {
-      await completeMutation({
-        id: activeAssessmentId as Id<"candidateAssessments">,
-        overallScore,
-      });
-
-      toast({
-        title: "Success",
-        description: "Portfolio review assessment completed",
-      });
-
-      setWizardOpen(false);
-      setActiveAssessmentId(null);
-      onDataChange?.();
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to complete assessment",
-        variant: "destructive",
-      });
-    }
+  const handleWizardClose = () => {
+    setWizardOpen(false);
+    setActiveAssessmentId(null);
+    onDataChange?.();
   };
 
   const handleDelete = async () => {
@@ -305,25 +93,6 @@ export const PortfolioReviewAssessment = ({
     setDeletingId(null);
   };
 
-  const updateResponse = (field: "responseNotes" | "competencyLevel", value: string) => {
-    setResponses((prev) => ({
-      ...prev,
-      [currentStep]: {
-        ...prev[currentStep],
-        questionIndex: currentStep,
-        [field]: value,
-      },
-    }));
-  };
-
-  const currentResponse = responses[currentStep] || {
-    questionIndex: currentStep,
-    responseNotes: "",
-    competencyLevel: null,
-  };
-
-  const currentQuestion = PORTFOLIO_QUESTIONS[currentStep];
-
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString("en-US", {
       month: "short",
@@ -338,15 +107,6 @@ export const PortfolioReviewAssessment = ({
       day: "numeric",
       year: "numeric",
     });
-  };
-
-  const getLevelBadge = (level: string) => {
-    const option = COMPETENCY_LEVELS.find((o) => o.value === level);
-    return option ? (
-      <Badge variant="outline" className={option.color}>
-        {option.label}
-      </Badge>
-    ) : null;
   };
 
   if (loading) {
@@ -439,103 +199,12 @@ export const PortfolioReviewAssessment = ({
         </CardContent>
       </Card>
 
-      {/* Portfolio Review Wizard Dialog */}
-      <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Portfolio Review Assessment</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-6">
-            {/* Progress */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>
-                  Question {currentStep + 1} of {PORTFOLIO_QUESTIONS.length}
-                </span>
-                <span>
-                  {Math.round(((currentStep + 1) / PORTFOLIO_QUESTIONS.length) * 100)}%
-                </span>
-              </div>
-              <Progress
-                value={((currentStep + 1) / PORTFOLIO_QUESTIONS.length) * 100}
-              />
-            </div>
-
-            {/* Competency Area Header */}
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {currentQuestion.competencyArea}
-              </p>
-              <p className="text-sm font-medium text-primary">
-                {currentQuestion.subCompetencyTitle}
-              </p>
-            </div>
-
-            {/* Question */}
-            <div className="space-y-4">
-              <p className="text-lg font-medium">
-                {currentQuestion.question}
-              </p>
-
-              {/* Competency Level */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Competency Level</label>
-                <Select
-                  value={currentResponse.competencyLevel || ""}
-                  onValueChange={(value) => updateResponse("competencyLevel", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select competency level..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPETENCY_LEVELS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
-                <Textarea
-                  placeholder="Enter observations and notes about the candidate's portfolio and response..."
-                  value={currentResponse.responseNotes || ""}
-                  onChange={(e) => updateResponse("responseNotes", e.target.value)}
-                  rows={6}
-                />
-              </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between">
-              <Button
-                variant="outline"
-                onClick={handleBack}
-                disabled={currentStep === 0}
-              >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-
-              {currentStep === PORTFOLIO_QUESTIONS.length - 1 ? (
-                <Button onClick={handleComplete}>
-                  Complete Assessment
-                  <Check className="h-4 w-4 ml-2" />
-                </Button>
-              ) : (
-                <Button onClick={handleNext}>
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <PortfolioReviewWizard
+        open={wizardOpen}
+        onClose={handleWizardClose}
+        candidate={candidate}
+        existingAssessmentId={activeAssessmentId}
+      />
 
       {/* Delete Confirmation */}
       <AlertDialog open={!!deletingId} onOpenChange={() => setDeletingId(null)}>

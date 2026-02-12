@@ -8,6 +8,32 @@ export const list = query({
   },
 });
 
+export const listWithAssessmentStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const candidates = await ctx.db.query("hiringCandidates").collect();
+
+    return Promise.all(
+      candidates.map(async (candidate) => {
+        const assessments = await ctx.db
+          .query("candidateAssessments")
+          .withIndex("by_candidateId", (q) => q.eq("candidateId", candidate._id))
+          .collect();
+
+        const currentStageAssessment = assessments.find(
+          (a) => a.stage === candidate.currentStage && a.status === "completed"
+        );
+
+        return {
+          ...candidate,
+          currentStageCompleted: !!currentStageAssessment,
+          currentStageScore: currentStageAssessment?.overallScore ?? null,
+        };
+      })
+    );
+  },
+});
+
 export const get = query({
   args: { id: v.id("hiringCandidates") },
   handler: async (ctx, args) => {

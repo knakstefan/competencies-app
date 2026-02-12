@@ -103,6 +103,9 @@ export const AssessmentList = ({ memberId, onCreateAssessment, onEditAssessment,
         <Card>
           <CardContent className="pt-6">
             <p className="text-center text-muted-foreground">No assessments yet. Create one to get started.</p>
+            <p className="text-center text-sm text-muted-foreground/70 mt-2">
+              Assessments evaluate each competency against level-specific criteria. Takes ~15 min. Progress saves automatically.
+            </p>
           </CardContent>
         </Card>
       ) : (

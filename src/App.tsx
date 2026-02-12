@@ -7,9 +7,11 @@ import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
 import ViewPage from "./pages/ViewPage";
 import TeamPage from "./pages/TeamPage";
+import TeamMemberDetailPage from "./pages/TeamMemberDetailPage";
 import UsersPage from "./pages/UsersPage";
 import ManagePage from "./pages/ManagePage";
 import HiringPage from "./pages/HiringPage";
+import CandidateDetailPage from "./pages/CandidateDetailPage";
 import Auth from "./pages/Auth";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
@@ -66,6 +68,14 @@ const App = () => (
             }
           />
           <Route
+            path="/team/:memberId"
+            element={
+              <AppLayout>
+                <TeamMemberDetailPage />
+              </AppLayout>
+            }
+          />
+          <Route
             path="/users"
             element={
               <AppLayout>
@@ -86,6 +96,14 @@ const App = () => (
             element={
               <AppLayout>
                 <HiringPage />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/hiring/:candidateId"
+            element={
+              <AppLayout>
+                <CandidateDetailPage />
               </AppLayout>
             }
           />

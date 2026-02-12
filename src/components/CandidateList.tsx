@@ -10,12 +10,17 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreVertical, SlidersVertical, Pencil, Trash2, ArrowRight } from "lucide-react";
+import { MoreVertical, SlidersVertical, Pencil, Trash2, ArrowRight, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HiringCandidate } from "./HiringManagement";
 
+interface CandidateWithStatus extends HiringCandidate {
+  currentStageCompleted?: boolean;
+  currentStageScore?: number | null;
+}
+
 interface CandidateListProps {
-  candidates: HiringCandidate[];
+  candidates: CandidateWithStatus[];
   loading: boolean;
   isAdmin: boolean;
   onView: (candidate: HiringCandidate) => void;
@@ -72,9 +77,14 @@ export const CandidateList = ({
 
   if (candidates.length === 0) {
     return (
-      <p className="text-muted-foreground text-center py-4">
-        No candidates yet. {isAdmin && "Add your first candidate above."}
-      </p>
+      <div className="text-center py-4">
+        <p className="text-muted-foreground">
+          No candidates yet. {isAdmin && "Add your first candidate above."}
+        </p>
+        <p className="text-sm text-muted-foreground/70 mt-2">
+          Candidates are assessed through three stages: Manager Interview, Portfolio Review, and Team Interview.
+        </p>
+      </div>
     );
   }
 
@@ -97,6 +107,23 @@ export const CandidateList = ({
               <Badge variant={getStageBadgeVariant(candidate.currentStage)} className="text-xs">
                 {candidate.currentStage.replace(/_/g, " ")}
               </Badge>
+              {candidate.currentStage !== "hired" && candidate.currentStage !== "rejected" && (
+                candidate.currentStageCompleted ? (
+                  <>
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <Check className="h-3 w-3" />
+                      Assessed
+                    </Badge>
+                    {candidate.currentStageScore != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {candidate.currentStageScore.toFixed(1)}/5
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-xs text-muted-foreground/70">Needs assessment</span>
+                )
+              )}
             </div>
           </div>
 

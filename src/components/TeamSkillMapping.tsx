@@ -33,9 +33,9 @@ const CHART_COLORS = [
 const LEVEL_BASE_SCORES: Record<string, number> = {
   'associate': 2,
   'intermediate': 4,
-  'senior': 7,
+  'senior': 6,
   'lead': 8,
-  'principal': 8,
+  'principal': 10,
 };
 
 const EVALUATION_MODIFIERS: Record<string, number> = {
@@ -50,11 +50,14 @@ const EVALUATION_MODIFIERS: Record<string, number> = {
 const getMaxChartScale = (members: TeamMember[]): number => {
   const levels = members.map(m => m.role.toLowerCase());
 
-  if (levels.includes('lead') || levels.includes('principal')) {
+  if (levels.includes('principal')) {
+    return 14; // 10 base + 4 well_above
+  }
+  if (levels.includes('lead')) {
     return 12; // 8 base + 4 well_above
   }
   if (levels.includes('senior')) {
-    return 11; // 7 base + 4 well_above
+    return 10; // 6 base + 4 well_above
   }
   if (levels.includes('intermediate')) {
     return 8;  // 4 base + 4 well_above
@@ -216,7 +219,7 @@ export const TeamSkillMapping = () => {
             </div>
             <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground">
-                Scale: 0-{maxScale} (based on team composition + performance). Skills plateau at Senior level; Lead and Principal share the same base score.
+                Scale: 0-{maxScale} (based on team composition + performance). Each level has a distinct base score with even 2-point spacing.
               </p>
             </div>
           </>
