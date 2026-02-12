@@ -3,7 +3,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 export const generateCompetencyDescriptions = action({
   args: {
@@ -16,7 +16,7 @@ export const generateCompetencyDescriptions = action({
     ),
   },
   handler: async (ctx, args) => {
-    const client = new Anthropic();
+    const client = new OpenAI();
     const descriptions: Record<string, string> = {};
 
     for (const comp of args.competencies) {
@@ -26,17 +26,18 @@ export const generateCompetencyDescriptions = action({
 
       const prompt = `Given the competency "${comp.title}" with the following sub-competencies:\n\n${subCompList}\n\nWrite a concise, professional 1-2 sentence description that summarizes what this competency encompasses. The description should be clear and suitable for a professional competency framework.`;
 
-      const message = await client.messages.create({
-        model: "claude-opus-4-6",
+      const response = await client.chat.completions.create({
+        model: "gpt-4o",
         max_tokens: 256,
-        system:
-          "You are a professional competency framework expert. Provide clear, concise descriptions.",
-        messages: [{ role: "user", content: prompt }],
+        messages: [
+          { role: "system", content: "You are a professional competency framework expert. Provide clear, concise descriptions." },
+          { role: "user", content: prompt },
+        ],
       });
 
-      const textBlock = message.content.find((b) => b.type === "text");
-      if (textBlock && textBlock.type === "text") {
-        descriptions[comp.id] = textBlock.text.trim();
+      const text = response.choices[0]?.message?.content;
+      if (text) {
+        descriptions[comp.id] = text.trim();
       }
     }
 
@@ -319,22 +320,22 @@ REQUIREMENTS:
 - Be professional but encouraging
 - Reference trends in the summary when available`;
 
-    // Call Claude Opus 4.6
-    const client = new Anthropic();
+    // Call OpenAI GPT-4o
+    const client = new OpenAI();
 
-    const message: any = await client.messages.create({
-      model: "claude-opus-4-6",
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
       max_tokens: 4096,
-      system: systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
     });
 
-    const textBlock: any = message.content.find((b: any) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from Claude");
+    const planContent = response.choices[0]?.message?.content;
+    if (!planContent) {
+      throw new Error("No text response from OpenAI");
     }
-
-    const planContent: string = textBlock.text;
 
     // Parse the JSON response
     let planStructure;

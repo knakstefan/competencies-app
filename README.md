@@ -7,7 +7,7 @@ A competency management system for Product Designer roles. View and manage compe
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui
 - **Backend**: Convex (real-time database, serverless functions)
 - **Auth**: Clerk
-- **AI**: Claude Opus 4.6 (competency descriptions, promotion plans)
+- **AI**: OpenAI GPT-4o (competency descriptions, promotion plans)
 
 ## Getting Started
 
@@ -42,7 +42,7 @@ VITE_CLERK_PUBLISHABLE_KEY=<your clerk publishable key>
 Set these in the Convex dashboard:
 
 - `CLERK_JWT_ISSUER_DOMAIN` — Your Clerk issuer domain
-- `ANTHROPIC_API_KEY` — For AI-powered features
+- `OPENAI_API_KEY` — For AI-powered features
 
 ## Features
 
