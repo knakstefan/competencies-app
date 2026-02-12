@@ -174,6 +174,23 @@ All colors MUST be HSL.
     background-clip: text;
   }
 
+  /* Ambient glow background */
+  .ambient-glow {
+    position: relative;
+  }
+  .ambient-glow::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 400px;
+    background: radial-gradient(ellipse, hsl(var(--primary) / 0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
   /* Gradient heading - Knak style */
   .gradient-heading {
     background: linear-gradient(

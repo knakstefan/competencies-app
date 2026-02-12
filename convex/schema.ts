@@ -10,12 +10,23 @@ export default defineSchema({
     .index("by_clerkId", ["clerkId"])
     .index("by_email", ["email"]),
 
+  roles: defineTable({
+    title: v.string(),
+    type: v.union(v.literal("ic"), v.literal("management")),
+    description: v.optional(v.string()),
+    orderIndex: v.number(),
+    createdBy: v.optional(v.string()),
+  }).index("by_orderIndex", ["orderIndex"]),
+
   competencies: defineTable({
     title: v.string(),
     code: v.optional(v.string()),
     description: v.optional(v.string()),
     orderIndex: v.number(),
-  }).index("by_orderIndex", ["orderIndex"]),
+    roleId: v.optional(v.id("roles")),
+  })
+    .index("by_orderIndex", ["orderIndex"])
+    .index("by_roleId", ["roleId"]),
 
   subCompetencies: defineTable({
     competencyId: v.id("competencies"),
@@ -36,7 +47,10 @@ export default defineSchema({
     role: v.string(),
     startDate: v.string(),
     createdBy: v.optional(v.string()),
-  }).index("by_name", ["name"]),
+    roleId: v.optional(v.id("roles")),
+  })
+    .index("by_name", ["name"])
+    .index("by_roleId", ["roleId"]),
 
   assessments: defineTable({
     memberId: v.id("teamMembers"),
@@ -86,9 +100,11 @@ export default defineSchema({
     currentStage: v.string(),
     notes: v.optional(v.string()),
     createdBy: v.optional(v.string()),
+    roleId: v.optional(v.id("roles")),
   })
     .index("by_name", ["name"])
-    .index("by_currentStage", ["currentStage"]),
+    .index("by_currentStage", ["currentStage"])
+    .index("by_roleId", ["roleId"]),
 
   candidateAssessments: defineTable({
     candidateId: v.id("hiringCandidates"),

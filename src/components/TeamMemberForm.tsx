@@ -30,9 +30,10 @@ interface TeamMemberFormProps {
     startDate: string;
   } | null;
   onCancel?: () => void;
+  roleId?: Id<"roles">;
 }
 
-export const TeamMemberForm = ({ onSuccess, editingMember, onCancel }: TeamMemberFormProps) => {
+export const TeamMemberForm = ({ onSuccess, editingMember, onCancel, roleId }: TeamMemberFormProps) => {
   const [name, setName] = useState(editingMember?.name || "");
   const [role, setRole] = useState(editingMember?.role || "");
   const [startDate, setStartDate] = useState(editingMember?.startDate || "");
@@ -70,6 +71,7 @@ export const TeamMemberForm = ({ onSuccess, editingMember, onCancel }: TeamMembe
           name: validated.name,
           role: validated.role,
           startDate: validated.startDate,
+          ...(roleId ? { roleId } : {}),
         });
 
         toast({

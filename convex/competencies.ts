@@ -31,12 +31,40 @@ export const listSubCompetenciesByCompetency = query({
   },
 });
 
+export const listByRole = query({
+  args: { roleId: v.id("roles") },
+  handler: async (ctx, args) => {
+    const comps = await ctx.db
+      .query("competencies")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
+      .collect();
+    return comps.sort((a, b) => a.orderIndex - b.orderIndex);
+  },
+});
+
+export const listSubCompetenciesByRole = query({
+  args: { roleId: v.id("roles") },
+  handler: async (ctx, args) => {
+    const comps = await ctx.db
+      .query("competencies")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
+      .collect();
+    const compIds = new Set(comps.map((c) => c._id));
+    const allSubs = await ctx.db
+      .query("subCompetencies")
+      .withIndex("by_orderIndex")
+      .collect();
+    return allSubs.filter((s) => compIds.has(s.competencyId));
+  },
+});
+
 export const create = mutation({
   args: {
     title: v.string(),
     code: v.optional(v.string()),
     description: v.optional(v.string()),
     orderIndex: v.number(),
+    roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("competencies", args);
@@ -160,11 +188,15 @@ export const bulkImport = mutation({
         principalLevel: v.optional(v.array(v.string())),
       })),
     })),
+    roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
     for (const comp of args.competencies) {
       const { subCompetencies, ...compData } = comp;
-      const compId = await ctx.db.insert("competencies", compData);
+      const compId = await ctx.db.insert("competencies", {
+        ...compData,
+        ...(args.roleId ? { roleId: args.roleId } : {}),
+      });
       for (const sub of subCompetencies) {
         await ctx.db.insert("subCompetencies", {
           ...sub,

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { SlidersVertical, Users, UserCog, LogOut, ChartNetwork, Menu, UserPlus, User } from "lucide-react";
+import { Users, UserCog, LogOut, ChartNetwork, Menu, UserPlus, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -30,12 +30,21 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
   const isMobile = useIsMobile();
   const [isOpen, setIsOpen] = useState(false);
 
-  const navItems = [
-    { path: "/manage", label: "Competencies", icon: ChartNetwork },
-    { path: "/", label: "Levels", icon: SlidersVertical },
-    { path: "/team", label: "Team", icon: Users },
-    { path: "/hiring", label: "Hiring", icon: UserPlus },
-  ];
+  // Detect if we're inside a role context
+  const roleMatch = location.pathname.match(/^\/roles\/([^/]+)/);
+  const roleId = roleMatch ? roleMatch[1] : null;
+
+  const navItems = roleId
+    ? [
+        { path: `/roles/${roleId}/competencies`, label: "Competencies", icon: ChartNetwork },
+        { path: `/roles/${roleId}/team`, label: "Team", icon: Users },
+        { path: `/roles/${roleId}/hiring`, label: "Hiring", icon: UserPlus },
+      ]
+    : [];
+
+  const isActivePath = (path: string) => {
+    return location.pathname === path || location.pathname.startsWith(path + "/");
+  };
 
   const handleNavClick = () => {
     setIsOpen(false);
@@ -52,57 +61,61 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
       <nav className="border-b bg-card/50 backdrop-blur-sm">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-14">
-            <Sheet open={isOpen} onOpenChange={setIsOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="shrink-0">
-                  <Menu className="h-5 w-5" />
-                  <span className="sr-only">Open menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-64 p-0">
-                <SheetHeader className="p-4 border-b">
-                  <SheetTitle className="flex items-center gap-2">
-                    <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
-                  </SheetTitle>
-                </SheetHeader>
-                <div className="flex flex-col h-[calc(100%-65px)]">
-                  <div className="flex-1 py-4">
-                    {navItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = location.pathname === item.path;
+            {navItems.length > 0 ? (
+              <Sheet open={isOpen} onOpenChange={setIsOpen}>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="icon" className="shrink-0">
+                    <Menu className="h-5 w-5" />
+                    <span className="sr-only">Open menu</span>
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="left" className="w-64 p-0">
+                  <SheetHeader className="p-4 border-b">
+                    <SheetTitle className="flex items-center gap-2">
+                      <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
+                    </SheetTitle>
+                  </SheetHeader>
+                  <div className="flex flex-col h-[calc(100%-65px)]">
+                    <div className="flex-1 py-4">
+                      {navItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = isActivePath(item.path);
 
-                      return (
-                        <Link
-                          key={item.path}
-                          to={item.path}
-                          onClick={handleNavClick}
-                          className={cn(
-                            "flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors",
-                            "hover:bg-muted",
-                            isActive
-                              ? "text-primary bg-muted"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          <Icon className="w-5 h-5" />
-                          {item.label}
-                        </Link>
-                      );
-                    })}
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            onClick={handleNavClick}
+                            className={cn(
+                              "flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors",
+                              "hover:bg-muted",
+                              isActive
+                                ? "text-primary bg-muted"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            <Icon className="w-5 h-5" />
+                            {item.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t p-4">
+                      <Button
+                        onClick={handleSignOut}
+                        variant="outline"
+                        className="w-full justify-start"
+                      >
+                        <LogOut className="w-4 h-4 mr-2" />
+                        Sign Out
+                      </Button>
+                    </div>
                   </div>
-                  <div className="border-t p-4">
-                    <Button
-                      onClick={handleSignOut}
-                      variant="outline"
-                      className="w-full justify-start"
-                    >
-                      <LogOut className="w-4 h-4 mr-2" />
-                      Sign Out
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+                </SheetContent>
+              </Sheet>
+            ) : (
+              <div className="w-10" />
+            )}
 
             <Link to="/" className="flex items-center">
               <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
@@ -151,7 +164,7 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
           <div className="flex items-center justify-center gap-1">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = location.pathname === item.path;
+              const isActive = isActivePath(item.path);
 
               return (
                 <Link

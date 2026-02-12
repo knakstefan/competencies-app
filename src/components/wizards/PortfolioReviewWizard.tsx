@@ -5,7 +5,6 @@ import { Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -13,23 +12,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { HiringCandidate } from "../HiringManagement";
-import { getPortfolioQuestionsForRole, type PortfolioQuestion } from "@/lib/interviewQuestions";
-
-const COMPETENCY_LEVELS = [
-  { value: "well_above", label: "Well Above", hint: "Exceptional, exceeds all expectations for this level" },
-  { value: "above", label: "Above", hint: "Consistently strong, exceeds most expectations" },
-  { value: "target", label: "Target", hint: "Meets expectations for the target level" },
-  { value: "below", label: "Below", hint: "Partially meets expectations, development needed" },
-  { value: "well_below", label: "Well Below", hint: "Significant gaps, substantial development needed" },
-];
+import {
+  getPortfolioQuestionsForRole,
+  getPortfolioCategories,
+  type PortfolioQuestion,
+} from "@/lib/interviewQuestions";
+import { RATING_OPTIONS, RATING_SCORE_MAP } from "@/lib/ratingConstants";
+import { WizardNavigationRail } from "./WizardNavigationRail";
+import { WizardSummary } from "./WizardSummary";
 
 interface PortfolioReviewWizardProps {
   open: boolean;
@@ -51,16 +53,24 @@ export const PortfolioReviewWizard = ({
   existingAssessmentId,
 }: PortfolioReviewWizardProps) => {
   const PORTFOLIO_QUESTIONS = getPortfolioQuestionsForRole(candidate.targetRole);
+  const categories = getPortfolioCategories(PORTFOLIO_QUESTIONS);
+  const totalSteps = PORTFOLIO_QUESTIONS.length + 1; // +1 for summary
+
   const [currentStep, setCurrentStep] = useState(0);
   const [responses, setResponses] = useState<Record<number, Response>>({});
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(false);
+  const [overallImpression, setOverallImpression] = useState("");
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
+  const [hoveredRating, setHoveredRating] = useState<string | null>(null);
   const { toast } = useToast();
 
   const client = useConvex();
   const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
   const completeMutation = useMutation(api.candidateAssessments.complete);
   const upsertResponse = useMutation(api.portfolioResponses.upsert);
+
+  const isSummaryStep = currentStep === PORTFOLIO_QUESTIONS.length;
 
   useEffect(() => {
     if (open) {
@@ -70,10 +80,11 @@ export const PortfolioReviewWizard = ({
         createAssessment();
       }
     } else {
-      // Reset state when closing
       setCurrentStep(0);
       setResponses({});
       setAssessmentId(null);
+      setOverallImpression("");
+      setHoveredRating(null);
     }
   }, [open, existingAssessmentId]);
 
@@ -84,10 +95,9 @@ export const PortfolioReviewWizard = ({
         candidateId: candidate._id as Id<"hiringCandidates">,
         stage: "portfolio_review",
       });
-
       setAssessmentId(id);
       setInitializing(false);
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to create assessment",
@@ -102,9 +112,14 @@ export const PortfolioReviewWizard = ({
     setAssessmentId(id);
 
     try {
-      const data = await client.query(api.portfolioResponses.listForAssessment, {
-        assessmentId: id as Id<"candidateAssessments">,
-      });
+      const [data, assessment] = await Promise.all([
+        client.query(api.portfolioResponses.listForAssessment, {
+          assessmentId: id as Id<"candidateAssessments">,
+        }),
+        client.query(api.candidateAssessments.getById, {
+          id: id as Id<"candidateAssessments">,
+        }),
+      ]);
 
       const responseMap: Record<number, Response> = {};
       (data || []).forEach((r: any) => {
@@ -116,8 +131,11 @@ export const PortfolioReviewWizard = ({
       });
 
       setResponses(responseMap);
+      if (assessment?.notes) {
+        setOverallImpression(assessment.notes);
+      }
       setInitializing(false);
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to load responses",
@@ -143,7 +161,7 @@ export const PortfolioReviewWizard = ({
         responseNotes: notes,
         competencyLevel: level ?? undefined,
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to save response",
@@ -152,73 +170,72 @@ export const PortfolioReviewWizard = ({
     }
   };
 
-  const handleNext = async () => {
-    // Cancel pending debounce and save immediately
+  const flushCurrentResponse = async () => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const currentResp = responses[currentStep];
-    if (currentResp) {
-      await saveResponse(
-        currentStep,
-        currentResp.responseNotes || "",
-        currentResp.competencyLevel
-      );
+    const step = currentStepRef.current;
+    if (step < PORTFOLIO_QUESTIONS.length) {
+      const currentResp = responsesRef.current[step];
+      if (currentResp) {
+        await saveResponse(step, currentResp.responseNotes || "", currentResp.competencyLevel);
+      }
     }
+  };
 
-    if (currentStep < PORTFOLIO_QUESTIONS.length - 1) {
+  const handleNavigate = async (targetStep: number) => {
+    if (targetStep < 0 || targetStep >= totalSteps) return;
+    await flushCurrentResponse();
+    setCurrentStep(targetStep);
+    setHoveredRating(null);
+  };
+
+  const handleNext = async () => {
+    await flushCurrentResponse();
+    if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
+      setHoveredRating(null);
     }
   };
 
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setHoveredRating(null);
     }
   };
 
   const handleComplete = async () => {
     if (!assessmentId) return;
 
-    // Cancel pending debounce and save immediately
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+    // Check completion percentage
+    const ratedCount = Object.values(responses).filter((r) => r.competencyLevel).length;
+    const pct = ratedCount / PORTFOLIO_QUESTIONS.length;
+    if (pct < 0.8 && !showIncompleteWarning) {
+      setShowIncompleteWarning(true);
+      return;
     }
-    const currentResp = responses[currentStep];
-    if (currentResp) {
-      await saveResponse(
-        currentStep,
-        currentResp.responseNotes || "",
-        currentResp.competencyLevel
-      );
-    }
+    setShowIncompleteWarning(false);
 
-    // Calculate overall score based on competency levels (1-5 scale)
-    const levelScores: Record<string, number> = {
-      well_below: 1,
-      below: 2,
-      target: 3,
-      above: 4,
-      well_above: 5,
-    };
+    await flushCurrentResponse();
 
     let totalScore = 0;
-    let ratedCount = 0;
+    let scored = 0;
     Object.values(responses).forEach((r) => {
-      if (r.competencyLevel && levelScores[r.competencyLevel]) {
-        totalScore += levelScores[r.competencyLevel];
-        ratedCount++;
+      if (r.competencyLevel && RATING_SCORE_MAP[r.competencyLevel]) {
+        totalScore += RATING_SCORE_MAP[r.competencyLevel];
+        scored++;
       }
     });
 
-    const overallScore = ratedCount > 0 ? totalScore / ratedCount : undefined;
+    const overallScore = scored > 0 ? totalScore / scored : undefined;
 
     try {
       await completeMutation({
         id: assessmentId as Id<"candidateAssessments">,
         overallScore,
+        notes: overallImpression || undefined,
       });
 
       toast({
@@ -227,7 +244,7 @@ export const PortfolioReviewWizard = ({
       });
 
       onClose();
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to complete assessment",
@@ -260,13 +277,16 @@ export const PortfolioReviewWizard = ({
       debounceRef.current = null;
     }
     const step = currentStepRef.current;
-    const r = responsesRef.current[step];
-    if (r && assessmentId) {
-      saveResponse(step, r.responseNotes || "", r.competencyLevel);
+    if (step < PORTFOLIO_QUESTIONS.length) {
+      const r = responsesRef.current[step];
+      if (r && assessmentId) {
+        saveResponse(step, r.responseNotes || "", r.competencyLevel);
+      }
     }
   }, [assessmentId]);
 
   useEffect(() => {
+    if (isSummaryStep) return;
     const r = responses[currentStep];
     if (!r || !assessmentId) return;
 
@@ -279,125 +299,206 @@ export const PortfolioReviewWizard = ({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [responses, currentStep, assessmentId]);
+  }, [responses, currentStep, assessmentId, isSummaryStep]);
 
   // Flush on close
   useEffect(() => {
     return () => { flushSave(); };
   }, [flushSave]);
 
+  // Default new questions to "target" level
+  if (!isSummaryStep && !responses[currentStep]) {
+    setResponses((prev) => ({
+      ...prev,
+      [currentStep]: {
+        questionIndex: currentStep,
+        responseNotes: null,
+        competencyLevel: "target",
+      },
+    }));
+  }
+
   const currentResponse = responses[currentStep] || {
     questionIndex: currentStep,
     responseNotes: "",
-    competencyLevel: null,
+    competencyLevel: "target",
   };
 
-  const currentQuestion = PORTFOLIO_QUESTIONS[currentStep];
-  const isLastStep = currentStep === PORTFOLIO_QUESTIONS.length - 1;
+  const currentQuestion: PortfolioQuestion | undefined = PORTFOLIO_QUESTIONS[currentStep];
+
+  // Find the hint to display: hovered rating or selected rating
+  const activeRatingValue = hoveredRating || currentResponse.competencyLevel;
+  const activeHint = activeRatingValue
+    ? RATING_OPTIONS.find((o) => o.value === activeRatingValue)?.hint
+    : null;
+
+  // Current category for dialog title
+  const currentCategory = isSummaryStep
+    ? "Review"
+    : currentQuestion?.competencyArea ?? "";
+
+  // Normalize responses for WizardNavigationRail (competencyLevel → rating)
+  const navResponses: Record<number, { rating: string | null; notes: string | null }> = {};
+  for (const [k, v] of Object.entries(responses)) {
+    navResponses[Number(k)] = { rating: v.competencyLevel, notes: v.responseNotes };
+  }
+
+  // Map questions for nav rail (competencyArea → category)
+  const navQuestions = PORTFOLIO_QUESTIONS.map((q) => ({ category: q.competencyArea }));
+
+  // Map questions for WizardSummary
+  const summaryQuestions = PORTFOLIO_QUESTIONS.map((q) => ({
+    category: q.competencyArea,
+    label: q.subCompetencyTitle,
+  }));
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Portfolio Review Assessment</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+          {/* Gradient top border */}
+          <div className="h-1 bg-gradient-knak" />
 
-        {initializing ? (
-          <div className="py-8 text-center text-muted-foreground">
-            Loading...
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Progress */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
+          <div className="px-6 pt-4 pb-6 space-y-6">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between">
                 <span>
-                  Question {currentStep + 1} of {PORTFOLIO_QUESTIONS.length}
+                  Portfolio Review — {candidate.name}
                 </span>
-                <span>
-                  {Math.round(((currentStep + 1) / PORTFOLIO_QUESTIONS.length) * 100)}%
+                <span className="text-xs font-normal text-muted-foreground">
+                  {currentCategory}
                 </span>
+              </DialogTitle>
+            </DialogHeader>
+
+            {initializing ? (
+              <div className="py-8 text-center text-muted-foreground">
+                Loading...
               </div>
-              <Progress
-                value={((currentStep + 1) / PORTFOLIO_QUESTIONS.length) * 100}
-              />
-            </div>
-
-            {/* Competency Area Header */}
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {currentQuestion.competencyArea}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {currentQuestion.subCompetencyTitle}
-              </p>
-            </div>
-
-            {/* Question */}
-            <div className="space-y-4">
-              <p className="text-lg font-medium">
-                {currentQuestion.question}
-              </p>
-
-              {/* Competency Level */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Competency Level</label>
-                <Select
-                  value={currentResponse.competencyLevel || ""}
-                  onValueChange={(value) => updateResponse("competencyLevel", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a level..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPETENCY_LEVELS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <span>{option.label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{option.hint}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
-                <Textarea
-                  placeholder="Enter observations and notes about the candidate's response..."
-                  value={currentResponse.responseNotes || ""}
-                  onChange={(e) => updateResponse("responseNotes", e.target.value)}
-                  rows={6}
+            ) : (
+              <div className="space-y-6">
+                {/* Navigation rail */}
+                <WizardNavigationRail
+                  categories={categories}
+                  questions={navQuestions}
+                  responses={navResponses}
+                  currentStep={currentStep}
+                  onNavigate={handleNavigate}
+                  isSummaryStep={isSummaryStep}
                 />
+
+                {isSummaryStep ? (
+                  <WizardSummary
+                    categories={categories}
+                    questions={summaryQuestions}
+                    responses={navResponses}
+                    onNavigate={handleNavigate}
+                    overallImpression={overallImpression}
+                    onOverallImpressionChange={setOverallImpression}
+                  />
+                ) : (
+                  <div key={currentStep} className="animate-fade-up space-y-4">
+                    {/* Competency Area Header */}
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {currentQuestion.competencyArea}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {currentQuestion.subCompetencyTitle}
+                      </p>
+                    </div>
+
+                    {/* Question */}
+                    <p className="text-lg font-medium">
+                      {currentQuestion.question}
+                    </p>
+
+                    {/* Rating tabs */}
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Competency Level</label>
+                      <Tabs
+                        value={currentResponse.competencyLevel || ""}
+                        onValueChange={(value) => updateResponse("competencyLevel", value)}
+                        className="w-full"
+                      >
+                        <TabsList className="grid w-full grid-cols-5">
+                          {RATING_OPTIONS.map((opt) => (
+                            <TabsTrigger
+                              key={opt.value}
+                              value={opt.value}
+                              className={`text-xs px-1 ${opt.colorClass}`}
+                              onMouseEnter={() => setHoveredRating(opt.value)}
+                              onMouseLeave={() => setHoveredRating(null)}
+                            >
+                              {opt.label}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+                      <p className="text-xs text-muted-foreground h-4">
+                        {activeHint ?? "\u00A0"}
+                      </p>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Notes</label>
+                      <Textarea
+                        placeholder={`Observations about ${currentQuestion.subCompetencyTitle.toLowerCase()}...`}
+                        value={currentResponse.responseNotes || ""}
+                        onChange={(e) => updateResponse("responseNotes", e.target.value)}
+                        rows={6}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Navigation */}
+                <div className="flex justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={handleBack}
+                    disabled={currentStep === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+
+                  {isSummaryStep ? (
+                    <Button onClick={handleComplete} className="gap-2">
+                      <Check className="h-4 w-4" />
+                      Complete Assessment
+                    </Button>
+                  ) : (
+                    <Button onClick={handleNext}>
+                      {currentStep === PORTFOLIO_QUESTIONS.length - 1 ? "Review" : "Next"}
+                      <ChevronRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between">
-              <Button
-                variant="outline"
-                onClick={handleBack}
-                disabled={currentStep === 0}
-              >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-
-              {isLastStep ? (
-                <Button onClick={handleComplete} className="gap-2">
-                  <Check className="h-4 w-4" />
-                  Complete Assessment
-                </Button>
-              ) : (
-                <Button onClick={handleNext}>
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              )}
-            </div>
+            )}
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Incomplete warning dialog */}
+      <AlertDialog open={showIncompleteWarning} onOpenChange={setShowIncompleteWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Incomplete Assessment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Less than 80% of questions have been rated. Are you sure you want to complete this assessment?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleComplete}>
+              Complete Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };

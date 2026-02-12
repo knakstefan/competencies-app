@@ -3,17 +3,19 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { useToast } from "@/hooks/use-toast";
 import { CandidateProgressView } from "@/components/CandidateProgressView";
 import { HiringCandidate } from "@/components/HiringManagement";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, ExternalLink, Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 
 const CandidateDetailPage = () => {
   const { candidateId } = useParams<{ candidateId: string }>();
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+  const { roleId } = useRole();
   const { toast } = useToast();
 
   const updateStage = useMutation(api.candidates.updateStage);
@@ -51,8 +53,7 @@ const CandidateDetailPage = () => {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground">Candidate not found.</p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate("/hiring")}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
+        <Button variant="outline" className="mt-4" onClick={() => navigate(`/roles/${roleId}/hiring`)}>
           Back to Hiring
         </Button>
       </div>
@@ -60,23 +61,15 @@ const CandidateDetailPage = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-4">
-        <Button
-          variant="outline"
-          className="cursor-pointer"
-          onClick={() => navigate("/hiring")}
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back
-        </Button>
-
-        <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <h2 className="text-2xl font-bold">{candidate.name}</h2>
-            <Badge variant="outline">{candidate.targetRole}</Badge>
-          </div>
-          <div className="flex flex-wrap items-center gap-4 mt-1 text-sm text-muted-foreground">
+    <div className="ambient-glow">
+      <div className="relative z-10 max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="text-center space-y-3 animate-fade-up">
+          <Badge variant="outline" className="text-xs">
+            {candidate.targetRole}
+          </Badge>
+          <h1 className="text-4xl font-bold gradient-heading">{candidate.name}</h1>
+          <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
             {candidate.email && <span>{candidate.email}</span>}
             {candidate.portfolioUrl && (
               <a
@@ -91,16 +84,17 @@ const CandidateDetailPage = () => {
             )}
           </div>
           {candidate.notes && (
-            <p className="mt-2 text-sm text-muted-foreground">{candidate.notes}</p>
+            <p className="text-sm text-muted-foreground max-w-lg mx-auto">{candidate.notes}</p>
           )}
         </div>
-      </div>
 
-      <CandidateProgressView
-        candidate={candidate as HiringCandidate}
-        isAdmin={isAdmin}
-        onStageChange={handleStageChange}
-      />
+        <CandidateProgressView
+          candidate={candidate as HiringCandidate}
+          isAdmin={isAdmin}
+          onStageChange={handleStageChange}
+          roleId={roleId}
+        />
+      </div>
     </div>
   );
 };

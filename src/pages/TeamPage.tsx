@@ -1,9 +1,11 @@
 import { TeamManagement } from "@/components/TeamManagement";
 import { useAuth } from "@/hooks/useAuth";
+import { useRole } from "@/hooks/useRole";
 import { Loader2 } from "lucide-react";
 
 const TeamPage = () => {
   const { isAdmin, isSignedIn } = useAuth();
+  const { roleId } = useRole();
 
   if (!isSignedIn) {
     return (
@@ -15,7 +17,7 @@ const TeamPage = () => {
 
   return (
     <div className="space-y-6">
-      <TeamManagement isAdmin={isAdmin} />
+      <TeamManagement isAdmin={isAdmin} roleId={roleId} />
     </div>
   );
 };

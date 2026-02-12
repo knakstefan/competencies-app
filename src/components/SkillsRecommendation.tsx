@@ -1,9 +1,17 @@
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb, TrendingDown, TrendingUp, Minus, AlertTriangle } from "lucide-react";
+import {
+  Lightbulb,
+  TrendingDown,
+  Minus,
+  AlertTriangle,
+  ChevronDown,
+  ShieldCheck,
+} from "lucide-react";
 
 interface SubCompetencyScore {
   subCompetencyId: string;
@@ -38,14 +46,49 @@ const EVALUATION_MODIFIERS: Record<string, number> = {
   well_above: 4,
 };
 
-export const SkillsRecommendation = () => {
-  const teamSkillData = useQuery(api.teamSkillData.getTeamSkillData);
+const getStrengthLabel = (avgScore: number, maxScore: number) => {
+  const ratio = avgScore / maxScore;
+  if (ratio < 0.3) return "Very weak";
+  if (ratio < 0.45) return "Weak";
+  if (ratio < 0.55) return "Below average";
+  if (ratio < 0.7) return "Average";
+  if (ratio < 0.85) return "Above average";
+  return "Strong";
+};
+
+const getStrengthDots = (avgScore: number, maxScore: number) => {
+  const ratio = avgScore / maxScore;
+  if (ratio < 0.3) return 1;
+  if (ratio < 0.45) return 2;
+  if (ratio < 0.6) return 3;
+  if (ratio < 0.75) return 4;
+  return 5;
+};
+
+interface SkillsRecommendationProps {
+  roleId?: string;
+}
+
+export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [showStrengths, setShowStrengths] = useState(false);
+
+  const globalData = useQuery(
+    api.teamSkillData.getTeamSkillData,
+    roleId ? "skip" : {}
+  );
+  const roleData = useQuery(
+    api.teamSkillData.getTeamSkillDataByRole,
+    roleId ? { roleId: roleId as any } : "skip"
+  );
+  const teamSkillData = roleId ? roleData : globalData;
 
   const loading = teamSkillData === undefined;
 
   if (loading) {
     return (
-      <Card>
+      <Card className="relative overflow-hidden">
+        <div className="h-0.5 bg-gradient-knak" />
         <CardHeader className="pb-3">
           <Skeleton className="h-5 w-40" />
         </CardHeader>
@@ -75,7 +118,8 @@ export const SkillsRecommendation = () => {
 
   if (members.length === 0) {
     return (
-      <Card>
+      <Card className="relative overflow-hidden">
+        <div className="h-0.5 bg-gradient-knak" />
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Lightbulb className="h-4 w-4 text-warning" />
@@ -111,7 +155,7 @@ export const SkillsRecommendation = () => {
   const maxPossibleScore = Math.max(
     ...members.map((m: any) => {
       const base = LEVEL_BASE_SCORES[m.role.toLowerCase()] || 4;
-      return base + 4; // well_above modifier
+      return base + 4;
     }),
     6
   );
@@ -121,7 +165,6 @@ export const SkillsRecommendation = () => {
     let totalScore = 0;
     let memberCount = 0;
 
-    // Track sub-competency scores across all members
     const subScoreAccumulator = new Map<
       string,
       { total: number; count: number; evalCount: number }
@@ -148,7 +191,6 @@ export const SkillsRecommendation = () => {
       memberProgress.forEach((progress: any) => {
         const evaluations = evaluationsByProgress.get(progress._id) || [];
 
-        // Track per sub-competency
         let subMod = 0;
         let subEvalCount = 0;
         evaluations.forEach((evaluation: any) => {
@@ -184,7 +226,6 @@ export const SkillsRecommendation = () => {
 
     const avgScore = memberCount > 0 ? totalScore / memberCount : 0;
 
-    // Build sub-competency scores
     const subScores: SubCompetencyScore[] = [];
     subScoreAccumulator.forEach((data, subId) => {
       subScores.push({
@@ -233,7 +274,8 @@ export const SkillsRecommendation = () => {
 
   if (!hasData) {
     return (
-      <Card>
+      <Card className="relative overflow-hidden">
+        <div className="h-0.5 bg-gradient-knak" />
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Lightbulb className="h-4 w-4 text-warning" />
@@ -253,76 +295,18 @@ export const SkillsRecommendation = () => {
     (m: any) => latestAssessmentByMember[m._id]
   ).length;
 
-  const getPriorityBadge = (
-    priority: "not_assessed" | "high" | "medium" | "strength"
-  ) => {
-    switch (priority) {
-      case "not_assessed":
-        return (
-          <Badge variant="outline" className="gap-1 border-dashed text-xs">
-            <AlertTriangle className="h-3 w-3" />
-            No Data
-          </Badge>
-        );
-      case "high":
-        return (
-          <Badge variant="destructive" className="gap-1 text-xs">
-            <TrendingDown className="h-3 w-3" />
-            Hire For
-          </Badge>
-        );
-      case "medium":
-        return (
-          <Badge className="gap-1 text-xs bg-warning text-warning-foreground hover:bg-warning/90">
-            <Minus className="h-3 w-3" />
-            Gap
-          </Badge>
-        );
-      case "strength":
-        return (
-          <Badge className="gap-1 text-xs bg-success text-success-foreground hover:bg-success/90">
-            <TrendingUp className="h-3 w-3" />
-            Strong
-          </Badge>
-        );
-    }
-  };
-
-  const getBarColor = (priority: CompetencyScore["priority"]) => {
-    switch (priority) {
-      case "not_assessed":
-        return "bg-muted-foreground/30";
-      case "high":
-        return "bg-destructive";
-      case "medium":
-        return "bg-warning";
-      case "strength":
-        return "bg-success";
-    }
-  };
-
-  // Find weakest competencies that have sub-competency data (for detail drill-down)
-  const weakestWithSubs = competencyScores.filter(
-    (c) =>
-      (c.priority === "high" || c.priority === "medium") &&
-      c.subScores.length > 0
-  );
+  // Group by priority
+  const criticalGaps = competencyScores.filter((c) => c.priority === "high");
+  const gaps = competencyScores.filter((c) => c.priority === "medium");
+  const strengths = competencyScores.filter((c) => c.priority === "strength");
+  const notAssessed = competencyScores.filter((c) => c.priority === "not_assessed");
 
   // Build summary text
-  const highPriorityCount = competencyScores.filter(
-    (c) => c.priority === "high"
-  ).length;
-  const gapCount = competencyScores.filter(
-    (c) => c.priority === "medium"
-  ).length;
-
   let summaryText: string;
-  if (highPriorityCount > 0) {
-    const weakestNames = competencyScores
-      .filter((c) => c.priority === "high")
-      .map((c) => c.competencyTitle);
-    summaryText = `Prioritize candidates strong in ${weakestNames.join(" and ")}.`;
-  } else if (gapCount > 0) {
+  if (criticalGaps.length > 0) {
+    const names = criticalGaps.map((c) => c.competencyTitle);
+    summaryText = `Prioritize candidates strong in ${names.join(" and ")}. ${names.length === 1 ? "This is" : "These are"} your team's biggest gap${names.length === 1 ? "" : "s"}.`;
+  } else if (gaps.length > 0) {
     summaryText =
       "No critical gaps, but look for candidates who can strengthen mid-range areas.";
   } else {
@@ -330,81 +314,185 @@ export const SkillsRecommendation = () => {
       "Team is well-rounded. Hire for culture add or to deepen existing strengths.";
   }
 
-  return (
-    <Card>
-      <CardHeader className="pb-3">
+  const renderCompetencyRow = (rec: CompetencyScore) => {
+    const dots = getStrengthDots(rec.avgScore, rec.maxScore);
+    const label = getStrengthLabel(rec.avgScore, rec.maxScore);
+    const dotColor =
+      rec.priority === "high"
+        ? "bg-destructive"
+        : rec.priority === "medium"
+          ? "bg-warning"
+          : "bg-success";
+    const emptyDotColor =
+      rec.priority === "high"
+        ? "bg-destructive/20"
+        : rec.priority === "medium"
+          ? "bg-warning/20"
+          : "bg-success/20";
+
+    return (
+      <div key={rec.competencyId} className="space-y-2">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Lightbulb className="h-4 w-4 text-warning" />
-            Skills to Look For
-          </CardTitle>
-          <span className="text-xs text-muted-foreground">
-            {assessedMemberCount}/{members.length} assessed
-          </span>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-0">
-        {competencyScores.map((rec) => (
-          <div key={rec.competencyId} className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium truncate mr-2">
-                {rec.competencyTitle}
-              </span>
-              {getPriorityBadge(rec.priority)}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+          <span className="text-sm font-medium">{rec.competencyTitle}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{label}</span>
+            <div className="flex gap-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
                 <div
-                  className={`h-full rounded-full transition-all ${getBarColor(rec.priority)}`}
-                  style={{
-                    width:
-                      rec.priority === "not_assessed"
-                        ? "0%"
-                        : `${(rec.avgScore / rec.maxScore) * 100}%`,
-                  }}
+                  key={i}
+                  className={`w-1.5 h-1.5 rounded-full ${i < dots ? dotColor : emptyDotColor}`}
                 />
+              ))}
+            </div>
+          </div>
+        </div>
+        {/* Sub-competencies for gaps */}
+        {(rec.priority === "high" || rec.priority === "medium") &&
+          rec.subScores.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pl-0.5">
+              {rec.subScores.map((sub) => {
+                const subLabel = getStrengthLabel(sub.avgScore, rec.maxScore);
+                return (
+                  <Badge
+                    key={sub.subCompetencyId}
+                    variant="outline"
+                    className="text-xs font-normal gap-1"
+                  >
+                    {sub.title}
+                    <span className="text-muted-foreground">{subLabel}</span>
+                  </Badge>
+                );
+              })}
+            </div>
+          )}
+      </div>
+    );
+  };
+
+  return (
+    <Card className="relative overflow-hidden">
+      <div className="h-0.5 bg-gradient-knak" />
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full text-left"
+      >
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="h-4 w-4 text-warning" />
+              Skills to Look For
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-muted-foreground">
+                Based on {assessedMemberCount}/{members.length} assessed members
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+              />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 pb-4">
+          <div className="rounded-lg bg-muted/50 px-4 py-3">
+            <p className="text-sm text-foreground">{summaryText}</p>
+          </div>
+        </CardContent>
+      </button>
+
+      {isExpanded && (
+        <CardContent className="space-y-5 pt-0">
+          {/* Critical Gaps */}
+          {criticalGaps.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
+                <h4 className="text-xs font-medium uppercase tracking-wide text-destructive">
+                  Critical Gaps
+                </h4>
+                <Badge variant="destructive" className="text-xs ml-auto">
+                  {criticalGaps.length}
+                </Badge>
               </div>
-              {rec.priority !== "not_assessed" && (
-                <span className="text-xs text-muted-foreground w-8 text-right">
-                  {rec.avgScore.toFixed(1)}
-                </span>
+              <div className="space-y-3 pl-5">
+                {criticalGaps.map(renderCompetencyRow)}
+              </div>
+            </div>
+          )}
+
+          {/* Areas to Strengthen */}
+          {gaps.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Minus className="h-3.5 w-3.5 text-warning" />
+                <h4 className="text-xs font-medium uppercase tracking-wide text-warning">
+                  Areas to Strengthen
+                </h4>
+                <Badge className="text-xs ml-auto bg-warning text-warning-foreground hover:bg-warning/90">
+                  {gaps.length}
+                </Badge>
+              </div>
+              <div className="space-y-3 pl-5">
+                {gaps.map(renderCompetencyRow)}
+              </div>
+            </div>
+          )}
+
+          {/* Not Assessed */}
+          {notAssessed.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Not Yet Assessed
+                </h4>
+                <Badge variant="outline" className="text-xs ml-auto border-dashed">
+                  {notAssessed.length}
+                </Badge>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pl-5">
+                {notAssessed.map((rec) => (
+                  <Badge
+                    key={rec.competencyId}
+                    variant="outline"
+                    className="text-xs font-normal border-dashed"
+                  >
+                    {rec.competencyTitle}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Team Strengths — collapsed by default */}
+          {strengths.length > 0 && (
+            <div className="space-y-3 border-t pt-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowStrengths(!showStrengths);
+                }}
+                className="flex items-center gap-2 w-full text-left"
+              >
+                <ShieldCheck className="h-3.5 w-3.5 text-success" />
+                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Team Strengths
+                </h4>
+                <Badge className="text-xs ml-auto bg-success text-success-foreground hover:bg-success/90">
+                  {strengths.length}
+                </Badge>
+                <ChevronDown
+                  className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${showStrengths ? "rotate-180" : ""}`}
+                />
+              </button>
+              {showStrengths && (
+                <div className="space-y-3 pl-5">
+                  {strengths.map(renderCompetencyRow)}
+                </div>
               )}
             </div>
-          </div>
-        ))}
-
-        {/* Sub-competency detail for weakest areas */}
-        {weakestWithSubs.length > 0 && (
-          <div className="border-t pt-3 mt-3 space-y-3">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Weakest sub-skills to screen for
-            </p>
-            {weakestWithSubs.slice(0, 2).map((comp) => (
-              <div key={comp.competencyId} className="space-y-1">
-                <p className="text-xs font-medium">{comp.competencyTitle}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {comp.subScores.slice(0, 3).map((sub) => (
-                    <Badge
-                      key={sub.subCompetencyId}
-                      variant="outline"
-                      className="text-xs font-normal"
-                    >
-                      {sub.title}
-                      <span className="ml-1 text-muted-foreground">
-                        {sub.avgScore.toFixed(1)}
-                      </span>
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <p className="text-xs text-muted-foreground pt-2 border-t">
-          {summaryText}
-        </p>
-      </CardContent>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 };

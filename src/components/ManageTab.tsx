@@ -21,6 +21,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { Id } from "../../convex/_generated/dataModel";
 import { ManageTabSkeleton } from "./skeletons/ManageTabSkeleton";
 import {
   DndContext,
@@ -122,9 +123,10 @@ interface ManageTabProps {
   subCompetencies: SubCompetency[];
   onUpdate: () => void;
   loading?: boolean;
+  roleId?: Id<"roles">;
 }
 
-export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = false }: ManageTabProps) => {
+export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = false, roleId }: ManageTabProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompetency, setEditingCompetency] = useState<Competency | null>(null);
   const [formData, setFormData] = useState({ title: "", description: "" });
@@ -233,6 +235,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
           title: validated.title,
           description: validated.description || undefined,
           orderIndex: maxOrderIndex + 1,
+          ...(roleId ? { roleId } : {}),
         });
 
         toast({
@@ -433,6 +436,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
         open={importDialogOpen}
         onOpenChange={setImportDialogOpen}
         onImportComplete={onUpdate}
+        roleId={roleId}
       />
     </div>
   );

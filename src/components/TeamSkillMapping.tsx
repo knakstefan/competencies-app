@@ -65,8 +65,20 @@ const getMaxChartScale = (members: TeamMember[]): number => {
   return 6;    // 2 base + 4 well_above (associate only)
 };
 
-export const TeamSkillMapping = () => {
-  const data = useQuery(api.teamSkillData.getTeamSkillData);
+interface TeamSkillMappingProps {
+  roleId?: string;
+}
+
+export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
+  const globalData = useQuery(
+    api.teamSkillData.getTeamSkillData,
+    roleId ? "skip" : {}
+  );
+  const roleData = useQuery(
+    api.teamSkillData.getTeamSkillDataByRole,
+    roleId ? { roleId: roleId as any } : "skip"
+  );
+  const data = roleId ? roleData : globalData;
 
   if (data === undefined) {
     return <SkillMappingSkeleton />;

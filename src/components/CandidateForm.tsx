@@ -20,11 +20,12 @@ interface CandidateFormProps {
   editingCandidate: HiringCandidate | null;
   onSuccess: () => void;
   onCancel: () => void;
+  roleId?: string;
 }
 
 const TARGET_ROLES = ["Associate", "Intermediate", "Senior", "Lead", "Principal"];
 
-export const CandidateForm = ({ editingCandidate, onSuccess, onCancel }: CandidateFormProps) => {
+export const CandidateForm = ({ editingCandidate, onSuccess, onCancel, roleId }: CandidateFormProps) => {
   const [name, setName] = useState(editingCandidate?.name || "");
   const [email, setEmail] = useState(editingCandidate?.email || "");
   const [portfolioUrl, setPortfolioUrl] = useState(editingCandidate?.portfolioUrl || "");
@@ -67,6 +68,7 @@ export const CandidateForm = ({ editingCandidate, onSuccess, onCancel }: Candida
           portfolioUrl: portfolioUrl.trim() || undefined,
           targetRole,
           notes: notes.trim() || undefined,
+          ...(roleId ? { roleId: roleId as any } : {}),
         });
       }
 

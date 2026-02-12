@@ -22,6 +22,7 @@ interface CompetencyImportDialogProps {
   onOpenChange: (open: boolean) => void;
   onImportComplete: () => void;
   existingCount?: number;
+  roleId?: string;
 }
 
 export const CompetencyImportDialog = ({
@@ -29,6 +30,7 @@ export const CompetencyImportDialog = ({
   onOpenChange,
   onImportComplete,
   existingCount = 0,
+  roleId,
 }: CompetencyImportDialogProps) => {
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
@@ -78,7 +80,10 @@ export const CompetencyImportDialog = ({
         })),
       }));
 
-      await bulkImport({ competencies: competenciesData });
+      await bulkImport({
+        competencies: competenciesData,
+        ...(roleId ? { roleId: roleId as any } : {}),
+      });
 
       toast({
         title: "Import successful",

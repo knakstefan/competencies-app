@@ -20,6 +20,7 @@ import type * as interviewResponses from "../interviewResponses.js";
 import type * as portfolioResponses from "../portfolioResponses.js";
 import type * as progress from "../progress.js";
 import type * as promotionPlans from "../promotionPlans.js";
+import type * as roles from "../roles.js";
 import type * as teamMembers from "../teamMembers.js";
 import type * as teamSkillData from "../teamSkillData.js";
 import type * as userAdmin from "../userAdmin.js";
@@ -44,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   portfolioResponses: typeof portfolioResponses;
   progress: typeof progress;
   promotionPlans: typeof promotionPlans;
+  roles: typeof roles;
   teamMembers: typeof teamMembers;
   teamSkillData: typeof teamSkillData;
   userAdmin: typeof userAdmin;

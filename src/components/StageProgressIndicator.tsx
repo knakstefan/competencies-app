@@ -29,12 +29,14 @@ interface StageProgressIndicatorProps {
   currentStage: string;
   isAdmin: boolean;
   onStageChange?: (newStage: string) => Promise<void>;
+  stageScores?: Record<string, number>;
 }
 
 export const StageProgressIndicator = ({
   currentStage,
   isAdmin,
   onStageChange,
+  stageScores = {},
 }: StageProgressIndicatorProps) => {
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [isChanging, setIsChanging] = useState(false);
@@ -65,6 +67,9 @@ export const StageProgressIndicator = ({
           const isCompleted = isTerminal || index < interviewIndex;
           const isCurrent = !isTerminal && index === interviewIndex;
           const isPending = stage.id === pendingStage;
+          const score = stageScores[stage.id];
+          const hasScore = score != null;
+          const hasNoAssessment = isCurrent && !hasScore;
 
           return (
             <div key={stage.id} className="flex items-center gap-2">
@@ -72,11 +77,12 @@ export const StageProgressIndicator = ({
                 onClick={() => handleStageClick(stage.id)}
                 disabled={!isAdmin || isChanging}
                 className={cn(
-                  "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
+                  "relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
                   isCompleted && "bg-primary/10 text-primary",
                   isCurrent && "bg-primary text-primary-foreground",
                   !isCompleted && !isCurrent && "bg-muted text-muted-foreground",
                   isPending && "ring-2 ring-primary ring-offset-2",
+                  hasNoAssessment && "animate-pulse",
                   isAdmin && !isCurrent && "hover:ring-2 hover:ring-primary/50 hover:ring-offset-2 cursor-pointer",
                   !isAdmin && "cursor-default"
                 )}
@@ -90,6 +96,15 @@ export const StageProgressIndicator = ({
                 )}
                 <span className="hidden sm:inline">{stage.label}</span>
                 <span className="sm:hidden">{stage.label.split(" ")[0]}</span>
+                {hasScore && (
+                  <span className={cn(
+                    "ml-1 text-xs font-semibold",
+                    isCompleted && "text-primary/70",
+                    isCurrent && "text-primary-foreground/80"
+                  )}>
+                    {score.toFixed(1)}
+                  </span>
+                )}
               </button>
 
               {index < INTERVIEW_STAGES.length - 1 && (

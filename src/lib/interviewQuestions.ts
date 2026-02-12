@@ -6,11 +6,25 @@ export interface PortfolioQuestion {
   question: string;
 }
 
+export interface InterviewQuestion {
+  category: string;
+  question: string;
+  signal: string;
+}
+
 // Competency area names centralized as constants
 const COMPETENCY_AREAS = {
   PRODUCT_THINKING: "Product Thinking & Prioritization",
   VISUAL_INTERACTION: "Visual, Interaction & Content Design",
   COMMUNICATION: "Communication & Collaboration",
+} as const;
+
+// Interview question categories
+const INTERVIEW_CATEGORIES = {
+  BACKGROUND: "Background & Motivation",
+  CRAFT: "Craft & Execution",
+  COLLABORATION: "Collaboration & Communication",
+  LEADERSHIP: "Leadership & Growth",
 } as const;
 
 export function getTierForRole(role: string): QuestionTier {
@@ -111,41 +125,137 @@ export function getPortfolioQuestionsForRole(role: string): PortfolioQuestion[] 
   return PORTFOLIO_QUESTIONS_BY_TIER[getTierForRole(role)];
 }
 
+export function getPortfolioCategories(questions: PortfolioQuestion[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const q of questions) {
+    if (!seen.has(q.competencyArea)) {
+      seen.add(q.competencyArea);
+      result.push(q.competencyArea);
+    }
+  }
+  return result;
+}
+
 // --- Interview Questions ---
 
-const EARLY_INTERVIEW_QUESTIONS: string[] = [
-  "Can you summarize your background and experience and what makes you excited for the opportunity?",
-  "What were your first impressions after the interview with the recruiter?",
-  "When you think about the favorite team you've been apart of, what did you like most?",
-  "What did you dislike?",
-  "What would your favorite manager say is your biggest strength?",
-  "How do you balance quick execution with design quality?",
-  "Can you share an example of a time when engineering feedback changed your design direction?",
-  "What strategies do you use to quickly re-enter context after switching tasks?",
-  "Describe a situation where you helped align different perspectives across product, design, and engineering.",
-  "Tell me about a time you had to present a design direction that wasn't initially well understood. How did you build alignment?",
-  "How do you balance quantitative data with qualitative insights?",
-  "Have you designed experiences that include AI or automation? What challenges did you face?",
+const EARLY_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
+  {
+    category: INTERVIEW_CATEGORIES.BACKGROUND,
+    question: "Can you summarize your background and experience and what makes you excited for the opportunity?",
+    signal: "Relevant experience, genuine enthusiasm, career trajectory alignment",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.BACKGROUND,
+    question: "What were your first impressions after the interview with the recruiter?",
+    signal: "Research depth, thoughtful observations about company and role",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.BACKGROUND,
+    question: "When you think about the favorite team you've been apart of, what did you like most?",
+    signal: "Values collaboration, team culture fit, specific examples",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.BACKGROUND,
+    question: "What did you dislike?",
+    signal: "Self-awareness, constructive framing, professional maturity",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.BACKGROUND,
+    question: "What would your favorite manager say is your biggest strength?",
+    signal: "Self-awareness, alignment with role requirements",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.CRAFT,
+    question: "How do you balance quick execution with design quality?",
+    signal: "Pragmatic tradeoffs, quality bar awareness, shipping mindset",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.COLLABORATION,
+    question: "Can you share an example of a time when engineering feedback changed your design direction?",
+    signal: "Cross-functional openness, ego management, iteration",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.CRAFT,
+    question: "What strategies do you use to quickly re-enter context after switching tasks?",
+    signal: "Organization skills, context management, productivity systems",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.COLLABORATION,
+    question: "Describe a situation where you helped align different perspectives across product, design, and engineering.",
+    signal: "Facilitation skills, stakeholder management, conflict resolution",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.COLLABORATION,
+    question: "Tell me about a time you had to present a design direction that wasn't initially well understood. How did you build alignment?",
+    signal: "Storytelling, persuasion, resilience to pushback",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.CRAFT,
+    question: "How do you balance quantitative data with qualitative insights?",
+    signal: "Mixed-methods thinking, evidence-based decisions",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.CRAFT,
+    question: "Have you designed experiences that include AI or automation? What challenges did you face?",
+    signal: "Emerging tech awareness, practical application, user-centered thinking",
+  },
 ];
 
-const MID_INTERVIEW_QUESTIONS: string[] = [
-  "Describe a situation where you had to manage competing priorities across multiple projects. How did you decide what to focus on?",
-  "Tell me about a time you identified a systemic design problem and drove a solution without being asked.",
-  "How have you helped less experienced designers grow? Give a specific example.",
+const MID_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "Describe a situation where you had to manage competing priorities across multiple projects. How did you decide what to focus on?",
+    signal: "Prioritization frameworks, stakeholder communication, strategic thinking",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "Tell me about a time you identified a systemic design problem and drove a solution without being asked.",
+    signal: "Proactive leadership, systems thinking, initiative",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "How have you helped less experienced designers grow? Give a specific example.",
+    signal: "Mentorship approach, empathy, knowledge sharing",
+  },
 ];
 
-const SENIOR_INTERVIEW_QUESTIONS: string[] = [
-  "How have you influenced product or design strategy beyond your immediate team?",
-  "Describe a time you had to make a high-stakes design decision with incomplete information. How did you manage risk?",
-  "How do you build and maintain a culture of design excellence across an organization?",
+const SENIOR_INTERVIEW_QUESTIONS: InterviewQuestion[] = [
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "How have you influenced product or design strategy beyond your immediate team?",
+    signal: "Strategic influence, executive communication, business acumen",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "Describe a time you had to make a high-stakes design decision with incomplete information. How did you manage risk?",
+    signal: "Risk management, decision-making frameworks, confidence under uncertainty",
+  },
+  {
+    category: INTERVIEW_CATEGORIES.LEADERSHIP,
+    question: "How do you build and maintain a culture of design excellence across an organization?",
+    signal: "Organizational leadership, culture building, design advocacy",
+  },
 ];
 
-const INTERVIEW_QUESTIONS_BY_TIER: Record<QuestionTier, string[]> = {
+const INTERVIEW_QUESTIONS_BY_TIER: Record<QuestionTier, InterviewQuestion[]> = {
   early: EARLY_INTERVIEW_QUESTIONS,
   mid: [...EARLY_INTERVIEW_QUESTIONS, ...MID_INTERVIEW_QUESTIONS],
   senior: [...EARLY_INTERVIEW_QUESTIONS, ...MID_INTERVIEW_QUESTIONS, ...SENIOR_INTERVIEW_QUESTIONS],
 };
 
-export function getInterviewQuestionsForRole(role: string): string[] {
+export function getInterviewQuestionsForRole(role: string): InterviewQuestion[] {
   return INTERVIEW_QUESTIONS_BY_TIER[getTierForRole(role)];
+}
+
+export function getInterviewCategories(questions: InterviewQuestion[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const q of questions) {
+    if (!seen.has(q.category)) {
+      seen.add(q.category);
+      result.push(q.category);
+    }
+  }
+  return result;
 }

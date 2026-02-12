@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useMutation, useConvex } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -13,23 +12,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { HiringCandidate } from "../HiringManagement";
-import { getInterviewQuestionsForRole } from "@/lib/interviewQuestions";
-
-const RATING_OPTIONS = [
-  { value: "well_above", label: "Well Above", hint: "Exceptional, exceeds all expectations for this level" },
-  { value: "above", label: "Above", hint: "Consistently strong, exceeds most expectations" },
-  { value: "target", label: "Target", hint: "Meets expectations for the target level" },
-  { value: "below", label: "Below", hint: "Partially meets expectations, development needed" },
-  { value: "well_below", label: "Well Below", hint: "Significant gaps, substantial development needed" },
-];
+import {
+  getInterviewQuestionsForRole,
+  getInterviewCategories,
+  type InterviewQuestion,
+} from "@/lib/interviewQuestions";
+import { RATING_OPTIONS, RATING_SCORE_MAP } from "@/lib/ratingConstants";
+import { WizardNavigationRail } from "./WizardNavigationRail";
+import { WizardSummary } from "./WizardSummary";
 
 interface ManagerInterviewWizardProps {
   open: boolean;
@@ -51,16 +53,50 @@ export const ManagerInterviewWizard = ({
   existingAssessmentId,
 }: ManagerInterviewWizardProps) => {
   const INTERVIEW_QUESTIONS = getInterviewQuestionsForRole(candidate.targetRole);
-  const [currentStep, setCurrentStep] = useState(0);
+  const categories = getInterviewCategories(INTERVIEW_QUESTIONS);
+
+  // Build display order: group original indices by category so Next/Back
+  // flows sequentially through each category instead of jumping.
+  // Responses are still keyed by original index for DB compatibility.
+  const displayOrder = useMemo(() => {
+    const order: number[] = [];
+    for (const cat of categories) {
+      INTERVIEW_QUESTIONS.forEach((q, i) => {
+        if (q.category === cat) order.push(i);
+      });
+    }
+    return order;
+  }, [INTERVIEW_QUESTIONS, categories]);
+
+  // Reverse map: original index → display step
+  const originalToDisplay = useMemo(() => {
+    const map: Record<number, number> = {};
+    displayOrder.forEach((origIdx, displayIdx) => {
+      map[origIdx] = displayIdx;
+    });
+    return map;
+  }, [displayOrder]);
+
+  const totalSteps = INTERVIEW_QUESTIONS.length + 1; // +1 for summary
+
+  const [currentStep, setCurrentStep] = useState(0); // display step
   const [responses, setResponses] = useState<Record<number, Response>>({});
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(false);
+  const [overallImpression, setOverallImpression] = useState("");
+  const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
+  const [hoveredRating, setHoveredRating] = useState<string | null>(null);
   const { toast } = useToast();
 
   const client = useConvex();
   const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
   const completeMutation = useMutation(api.candidateAssessments.complete);
   const upsertResponse = useMutation(api.interviewResponses.upsert);
+
+  const isSummaryStep = currentStep === INTERVIEW_QUESTIONS.length;
+
+  // Current original question index (only valid when not on summary)
+  const origIdx = isSummaryStep ? -1 : displayOrder[currentStep];
 
   useEffect(() => {
     if (open) {
@@ -70,10 +106,11 @@ export const ManagerInterviewWizard = ({
         createAssessment();
       }
     } else {
-      // Reset state when closing
       setCurrentStep(0);
       setResponses({});
       setAssessmentId(null);
+      setOverallImpression("");
+      setHoveredRating(null);
     }
   }, [open, existingAssessmentId]);
 
@@ -84,10 +121,9 @@ export const ManagerInterviewWizard = ({
         candidateId: candidate._id as Id<"hiringCandidates">,
         stage: "manager_interview",
       });
-
       setAssessmentId(id);
       setInitializing(false);
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to create assessment",
@@ -102,9 +138,14 @@ export const ManagerInterviewWizard = ({
     setAssessmentId(id);
 
     try {
-      const data = await client.query(api.interviewResponses.listForAssessment, {
-        assessmentId: id as Id<"candidateAssessments">,
-      });
+      const [data, assessment] = await Promise.all([
+        client.query(api.interviewResponses.listForAssessment, {
+          assessmentId: id as Id<"candidateAssessments">,
+        }),
+        client.query(api.candidateAssessments.getById, {
+          id: id as Id<"candidateAssessments">,
+        }),
+      ]);
 
       const responseMap: Record<number, Response> = {};
       (data || []).forEach((r: any) => {
@@ -116,8 +157,11 @@ export const ManagerInterviewWizard = ({
       });
 
       setResponses(responseMap);
+      if (assessment?.notes) {
+        setOverallImpression(assessment.notes);
+      }
       setInitializing(false);
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to load responses",
@@ -135,11 +179,11 @@ export const ManagerInterviewWizard = ({
         assessmentId: assessmentId as Id<"candidateAssessments">,
         candidateId: candidate._id as Id<"hiringCandidates">,
         questionIndex,
-        questionText: INTERVIEW_QUESTIONS[questionIndex],
+        questionText: INTERVIEW_QUESTIONS[questionIndex].question,
         responseNotes: notes,
         rating: rating ?? undefined,
       });
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to save response",
@@ -148,73 +192,78 @@ export const ManagerInterviewWizard = ({
     }
   };
 
-  const handleNext = async () => {
-    // Cancel pending debounce and save immediately
+  const flushCurrentResponse = async () => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const currentResp = responses[currentStep];
-    if (currentResp) {
-      await saveResponse(
-        currentStep,
-        currentResp.responseNotes || "",
-        currentResp.rating
-      );
+    const step = currentStepRef.current;
+    if (step < INTERVIEW_QUESTIONS.length) {
+      const oIdx = displayOrder[step];
+      const currentResp = responsesRef.current[oIdx];
+      if (currentResp) {
+        await saveResponse(oIdx, currentResp.responseNotes || "", currentResp.rating);
+      }
     }
+  };
 
-    if (currentStep < INTERVIEW_QUESTIONS.length - 1) {
+  // handleNavigate accepts a display step
+  const handleNavigate = async (targetDisplayStep: number) => {
+    if (targetDisplayStep < 0 || targetDisplayStep >= totalSteps) return;
+    await flushCurrentResponse();
+    setCurrentStep(targetDisplayStep);
+    setHoveredRating(null);
+  };
+
+  // Called by nav rail dots — they pass display indices
+  const handleDotNavigate = async (displayIdx: number) => {
+    await handleNavigate(displayIdx);
+  };
+
+  const handleNext = async () => {
+    await flushCurrentResponse();
+    if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
+      setHoveredRating(null);
     }
   };
 
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setHoveredRating(null);
     }
   };
 
   const handleComplete = async () => {
     if (!assessmentId) return;
 
-    // Cancel pending debounce and save immediately
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+    const ratedCount = Object.values(responses).filter((r) => r.rating).length;
+    const pct = ratedCount / INTERVIEW_QUESTIONS.length;
+    if (pct < 0.8 && !showIncompleteWarning) {
+      setShowIncompleteWarning(true);
+      return;
     }
-    const currentResp = responses[currentStep];
-    if (currentResp) {
-      await saveResponse(
-        currentStep,
-        currentResp.responseNotes || "",
-        currentResp.rating
-      );
-    }
+    setShowIncompleteWarning(false);
 
-    // Calculate overall score based on ratings (5-point scale)
-    const ratingScores: Record<string, number> = {
-      well_above: 5,
-      above: 4,
-      target: 3,
-      below: 2,
-      well_below: 1,
-    };
+    await flushCurrentResponse();
 
     let totalScore = 0;
-    let ratedCount = 0;
+    let scored = 0;
     Object.values(responses).forEach((r) => {
-      if (r.rating && ratingScores[r.rating]) {
-        totalScore += ratingScores[r.rating];
-        ratedCount++;
+      if (r.rating && RATING_SCORE_MAP[r.rating]) {
+        totalScore += RATING_SCORE_MAP[r.rating];
+        scored++;
       }
     });
 
-    const overallScore = ratedCount > 0 ? totalScore / ratedCount : undefined;
+    const overallScore = scored > 0 ? totalScore / scored : undefined;
 
     try {
       await completeMutation({
         id: assessmentId as Id<"candidateAssessments">,
         overallScore,
+        notes: overallImpression || undefined,
       });
 
       toast({
@@ -223,7 +272,7 @@ export const ManagerInterviewWizard = ({
       });
 
       onClose();
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to complete assessment",
@@ -233,11 +282,12 @@ export const ManagerInterviewWizard = ({
   };
 
   const updateResponse = (field: "responseNotes" | "rating", value: string) => {
+    if (isSummaryStep) return;
     setResponses((prev) => ({
       ...prev,
-      [currentStep]: {
-        ...prev[currentStep],
-        questionIndex: currentStep,
+      [origIdx]: {
+        ...prev[origIdx],
+        questionIndex: origIdx,
         [field]: value,
       },
     }));
@@ -256,133 +306,239 @@ export const ManagerInterviewWizard = ({
       debounceRef.current = null;
     }
     const step = currentStepRef.current;
-    const r = responsesRef.current[step];
-    if (r && assessmentId) {
-      saveResponse(step, r.responseNotes || "", r.rating);
+    if (step < INTERVIEW_QUESTIONS.length) {
+      const oIdx = displayOrder[step];
+      const r = responsesRef.current[oIdx];
+      if (r && assessmentId) {
+        saveResponse(oIdx, r.responseNotes || "", r.rating);
+      }
     }
-  }, [assessmentId]);
+  }, [assessmentId, displayOrder]);
 
   useEffect(() => {
-    const r = responses[currentStep];
+    if (isSummaryStep) return;
+    const r = responses[origIdx];
     if (!r || !assessmentId) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      saveResponse(currentStep, r.responseNotes || "", r.rating);
+      saveResponse(origIdx, r.responseNotes || "", r.rating);
       debounceRef.current = null;
     }, 500);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [responses, currentStep, assessmentId]);
+  }, [responses, origIdx, assessmentId, isSummaryStep]);
 
   // Flush on close
   useEffect(() => {
     return () => { flushSave(); };
   }, [flushSave]);
 
-  const currentResponse = responses[currentStep] || {
-    questionIndex: currentStep,
+  // Default new questions to "target" rating
+  if (!isSummaryStep && !responses[origIdx]) {
+    setResponses((prev) => ({
+      ...prev,
+      [origIdx]: {
+        questionIndex: origIdx,
+        responseNotes: null,
+        rating: "target",
+      },
+    }));
+  }
+
+  const currentResponse = responses[origIdx] || {
+    questionIndex: origIdx,
     responseNotes: "",
-    rating: null,
+    rating: "target",
   };
 
-  const isLastStep = currentStep === INTERVIEW_QUESTIONS.length - 1;
+  const currentQuestion: InterviewQuestion | undefined = INTERVIEW_QUESTIONS[origIdx];
+
+  // Find the hint to display: hovered rating or selected rating
+  const activeRatingValue = hoveredRating || currentResponse.rating;
+  const activeHint = activeRatingValue
+    ? RATING_OPTIONS.find((o) => o.value === activeRatingValue)?.hint
+    : null;
+
+  // Current category for dialog title
+  const currentCategory = isSummaryStep
+    ? "Review"
+    : currentQuestion?.category ?? "";
+
+  // Build nav rail data in display order.
+  // Nav rail indices = display steps. Responses re-keyed by display step.
+  const navQuestions = displayOrder.map((oIdx) => ({
+    category: INTERVIEW_QUESTIONS[oIdx].category,
+  }));
+  const navResponses: Record<number, { rating: string | null; notes: string | null }> = {};
+  displayOrder.forEach((oIdx, displayIdx) => {
+    const r = responses[oIdx];
+    if (r) {
+      navResponses[displayIdx] = { rating: r.rating, notes: r.responseNotes };
+    }
+  });
+
+  // Build summary data in display order
+  const summaryQuestions = displayOrder.map((oIdx) => {
+    const q = INTERVIEW_QUESTIONS[oIdx];
+    return {
+      category: q.category,
+      label: q.question.length > 80 ? q.question.slice(0, 77) + "..." : q.question,
+    };
+  });
+  // Summary responses also re-keyed by display step
+  const summaryResponses: Record<number, { rating: string | null; notes: string | null }> = {};
+  displayOrder.forEach((oIdx, displayIdx) => {
+    const r = responses[oIdx];
+    if (r) {
+      summaryResponses[displayIdx] = { rating: r.rating, notes: r.responseNotes };
+    }
+  });
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Manager Interview Assessment</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+          {/* Gradient top border */}
+          <div className="h-1 bg-gradient-knak" />
 
-        {initializing ? (
-          <div className="py-8 text-center text-muted-foreground">
-            Loading...
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Progress */}
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
+          <div className="px-6 pt-4 pb-6 space-y-6">
+            <DialogHeader>
+              <DialogTitle className="flex items-center justify-between">
                 <span>
-                  Question {currentStep + 1} of {INTERVIEW_QUESTIONS.length}
+                  Manager Interview — {candidate.name}
                 </span>
-                <span>
-                  {Math.round(((currentStep + 1) / INTERVIEW_QUESTIONS.length) * 100)}%
+                <span className="text-xs font-normal text-muted-foreground">
+                  {currentCategory}
                 </span>
+              </DialogTitle>
+            </DialogHeader>
+
+            {initializing ? (
+              <div className="py-8 text-center text-muted-foreground">
+                Loading...
               </div>
-              <Progress
-                value={((currentStep + 1) / INTERVIEW_QUESTIONS.length) * 100}
-              />
-            </div>
-
-            {/* Question */}
-            <div className="space-y-4">
-              <p className="text-lg font-medium">
-                {INTERVIEW_QUESTIONS[currentStep]}
-              </p>
-
-              {/* Rating */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Rating</label>
-                <Select
-                  value={currentResponse.rating || ""}
-                  onValueChange={(value) => updateResponse("rating", value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a rating..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RATING_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <span>{option.label}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{option.hint}</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
-                <Textarea
-                  placeholder="Enter observations and notes about the candidate's response..."
-                  value={currentResponse.responseNotes || ""}
-                  onChange={(e) => updateResponse("responseNotes", e.target.value)}
-                  rows={6}
+            ) : (
+              <div className="space-y-6">
+                {/* Navigation rail */}
+                <WizardNavigationRail
+                  categories={categories}
+                  questions={navQuestions}
+                  responses={navResponses}
+                  currentStep={currentStep}
+                  onNavigate={handleDotNavigate}
+                  isSummaryStep={isSummaryStep}
                 />
+
+                {isSummaryStep ? (
+                  <WizardSummary
+                    categories={categories}
+                    questions={summaryQuestions}
+                    responses={summaryResponses}
+                    onNavigate={handleNavigate}
+                    overallImpression={overallImpression}
+                    onOverallImpressionChange={setOverallImpression}
+                  />
+                ) : (
+                  <div key={currentStep} className="animate-fade-up space-y-4">
+                    {/* Category header */}
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {currentQuestion.category}
+                    </p>
+
+                    {/* Question */}
+                    <p className="text-lg font-medium">
+                      {currentQuestion.question}
+                    </p>
+
+                    {/* Rating tabs */}
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Rating</label>
+                      <Tabs
+                        value={currentResponse.rating || ""}
+                        onValueChange={(value) => updateResponse("rating", value)}
+                        className="w-full"
+                      >
+                        <TabsList className="grid w-full grid-cols-5">
+                          {RATING_OPTIONS.map((opt) => (
+                            <TabsTrigger
+                              key={opt.value}
+                              value={opt.value}
+                              className={`text-xs px-1 ${opt.colorClass}`}
+                              onMouseEnter={() => setHoveredRating(opt.value)}
+                              onMouseLeave={() => setHoveredRating(null)}
+                            >
+                              {opt.label}
+                            </TabsTrigger>
+                          ))}
+                        </TabsList>
+                      </Tabs>
+                      <p className="text-xs text-muted-foreground h-4">
+                        {activeHint ?? "\u00A0"}
+                      </p>
+                    </div>
+
+                    {/* Notes */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Notes</label>
+                      <Textarea
+                        placeholder={currentQuestion.signal || "Enter observations and notes about the candidate's response..."}
+                        value={currentResponse.responseNotes || ""}
+                        onChange={(e) => updateResponse("responseNotes", e.target.value)}
+                        rows={6}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Navigation */}
+                <div className="flex justify-between">
+                  <Button
+                    variant="outline"
+                    onClick={handleBack}
+                    disabled={currentStep === 0}
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-2" />
+                    Back
+                  </Button>
+
+                  {isSummaryStep ? (
+                    <Button onClick={handleComplete} className="gap-2">
+                      <Check className="h-4 w-4" />
+                      Complete Assessment
+                    </Button>
+                  ) : (
+                    <Button onClick={handleNext}>
+                      {currentStep === INTERVIEW_QUESTIONS.length - 1 ? "Review" : "Next"}
+                      <ChevronRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  )}
+                </div>
               </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between">
-              <Button
-                variant="outline"
-                onClick={handleBack}
-                disabled={currentStep === 0}
-              >
-                <ChevronLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-
-              {isLastStep ? (
-                <Button onClick={handleComplete} className="gap-2">
-                  <Check className="h-4 w-4" />
-                  Complete Assessment
-                </Button>
-              ) : (
-                <Button onClick={handleNext}>
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-2" />
-                </Button>
-              )}
-            </div>
+            )}
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      {/* Incomplete warning dialog */}
+      <AlertDialog open={showIncompleteWarning} onOpenChange={setShowIncompleteWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Incomplete Assessment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Less than 80% of questions have been rated. Are you sure you want to complete this assessment?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Go Back</AlertDialogCancel>
+            <AlertDialogAction onClick={handleComplete}>
+              Complete Anyway
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };

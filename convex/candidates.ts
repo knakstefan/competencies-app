@@ -34,6 +34,35 @@ export const listWithAssessmentStatus = query({
   },
 });
 
+export const listWithAssessmentStatusByRole = query({
+  args: { roleId: v.id("roles") },
+  handler: async (ctx, args) => {
+    const candidates = await ctx.db
+      .query("hiringCandidates")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
+      .collect();
+
+    return Promise.all(
+      candidates.map(async (candidate) => {
+        const assessments = await ctx.db
+          .query("candidateAssessments")
+          .withIndex("by_candidateId", (q) => q.eq("candidateId", candidate._id))
+          .collect();
+
+        const currentStageAssessment = assessments.find(
+          (a) => a.stage === candidate.currentStage && a.status === "completed"
+        );
+
+        return {
+          ...candidate,
+          currentStageCompleted: !!currentStageAssessment,
+          currentStageScore: currentStageAssessment?.overallScore ?? null,
+        };
+      })
+    );
+  },
+});
+
 export const get = query({
   args: { id: v.id("hiringCandidates") },
   handler: async (ctx, args) => {
@@ -50,6 +79,7 @@ export const create = mutation({
     currentStage: v.optional(v.string()),
     notes: v.optional(v.string()),
     createdBy: v.optional(v.string()),
+    roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("hiringCandidates", {

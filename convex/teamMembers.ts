@@ -43,6 +43,38 @@ export const listWithAssessmentSummary = query({
   },
 });
 
+export const listWithAssessmentSummaryByRole = query({
+  args: { roleId: v.id("roles") },
+  handler: async (ctx, args) => {
+    const members = await ctx.db
+      .query("teamMembers")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
+      .collect();
+
+    return Promise.all(
+      members.map(async (member) => {
+        const assessments = await ctx.db
+          .query("assessments")
+          .withIndex("by_memberId", (q) => q.eq("memberId", member._id))
+          .collect();
+
+        const completedAssessments = assessments.filter((a) => a.status === "completed");
+        const latestCompleted = completedAssessments.length > 0
+          ? completedAssessments.sort((a, b) =>
+              (b.completedAt || "").localeCompare(a.completedAt || "")
+            )[0]
+          : null;
+
+        return {
+          ...member,
+          assessmentCount: assessments.length,
+          lastAssessedAt: latestCompleted?.completedAt ?? null,
+        };
+      })
+    );
+  },
+});
+
 export const get = query({
   args: { id: v.id("teamMembers") },
   handler: async (ctx, args) => {
@@ -56,6 +88,7 @@ export const create = mutation({
     role: v.string(),
     startDate: v.string(),
     createdBy: v.optional(v.string()),
+    roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("teamMembers", args);

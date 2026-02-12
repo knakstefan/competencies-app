@@ -8,6 +8,7 @@ import OpenAI from "openai";
 export const generatePromotionPlan = action({
   args: {
     memberId: v.id("teamMembers"),
+    roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args): Promise<{ planId: string; planContent: any }> => {
     // Fetch all data server-side
@@ -16,11 +17,12 @@ export const generatePromotionPlan = action({
     });
     if (!member) throw new Error("Member not found");
 
-    const competencies: any[] = await ctx.runQuery(api.competencies.list, {});
-    const subCompetencies: any[] = await ctx.runQuery(
-      api.competencies.listSubCompetencies,
-      {}
-    );
+    const competencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.list, {});
+    const subCompetencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listSubCompetenciesByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.listSubCompetencies, {});
     const allAssessments: any[] = await ctx.runQuery(
       api.assessments.getCompletedForMember,
       { memberId: args.memberId }

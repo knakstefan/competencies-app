@@ -5,11 +5,13 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
-import ViewPage from "./pages/ViewPage";
+import RolesPage from "./pages/RolesPage";
+import RoleDetailPage from "./pages/RoleDetailPage";
+import RoleOverviewPage from "./pages/RoleOverviewPage";
+import CompetenciesPage from "./pages/CompetenciesPage";
 import TeamPage from "./pages/TeamPage";
 import TeamMemberDetailPage from "./pages/TeamMemberDetailPage";
 import UsersPage from "./pages/UsersPage";
-import ManagePage from "./pages/ManagePage";
 import HiringPage from "./pages/HiringPage";
 import CandidateDetailPage from "./pages/CandidateDetailPage";
 import Auth from "./pages/Auth";
@@ -55,55 +57,30 @@ const App = () => (
             path="/"
             element={
               <AppLayout>
-                <ViewPage />
+                <RolesPage />
               </AppLayout>
             }
           />
           <Route
-            path="/team"
+            path="/roles/:roleId"
             element={
               <AppLayout>
-                <TeamPage />
+                <RoleDetailPage />
               </AppLayout>
             }
-          />
-          <Route
-            path="/team/:memberId"
-            element={
-              <AppLayout>
-                <TeamMemberDetailPage />
-              </AppLayout>
-            }
-          />
+          >
+            <Route index element={<RoleOverviewPage />} />
+            <Route path="competencies" element={<CompetenciesPage />} />
+            <Route path="team" element={<TeamPage />} />
+            <Route path="team/:memberId" element={<TeamMemberDetailPage />} />
+            <Route path="hiring" element={<HiringPage />} />
+            <Route path="hiring/:candidateId" element={<CandidateDetailPage />} />
+          </Route>
           <Route
             path="/users"
             element={
               <AppLayout>
                 <UsersPage />
-              </AppLayout>
-            }
-          />
-          <Route
-            path="/manage"
-            element={
-              <AppLayout>
-                <ManagePage />
-              </AppLayout>
-            }
-          />
-          <Route
-            path="/hiring"
-            element={
-              <AppLayout>
-                <HiringPage />
-              </AppLayout>
-            }
-          />
-          <Route
-            path="/hiring/:candidateId"
-            element={
-              <AppLayout>
-                <CandidateDetailPage />
               </AppLayout>
             }
           />

@@ -19,6 +19,7 @@ interface TeamMember {
 interface PromotionPlanProps {
   member: TeamMember;
   isAdmin: boolean;
+  roleId?: string;
 }
 
 interface PlanContent {
@@ -69,7 +70,7 @@ interface PromotionPlanData {
   planContent: PlanContent;
 }
 
-export const PromotionPlan = ({ member, isAdmin }: PromotionPlanProps) => {
+export const PromotionPlan = ({ member, isAdmin, roleId }: PromotionPlanProps) => {
   const [generating, setGenerating] = useState(false);
   const { toast } = useToast();
 
@@ -82,7 +83,10 @@ export const PromotionPlan = ({ member, isAdmin }: PromotionPlanProps) => {
   const handleGeneratePlan = async () => {
     setGenerating(true);
     try {
-      await generatePlanAction({ memberId: member._id });
+      await generatePlanAction({
+        memberId: member._id,
+        ...(roleId ? { roleId: roleId as any } : {}),
+      });
 
       toast({
         title: "Success",
