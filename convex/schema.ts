@@ -189,7 +189,7 @@ export default defineSchema({
     roleId: v.id("roles"),
     title: v.string(),
     description: v.optional(v.string()),
-    stageType: v.literal("ai_interview"),
+    stageType: v.string(),
     aiInstructions: v.optional(v.string()),
     gateMinScore: v.optional(v.number()),
     gateMinRatedPct: v.optional(v.number()),
