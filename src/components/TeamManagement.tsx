@@ -37,6 +37,7 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import { Id } from "../../convex/_generated/dataModel";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
 
 interface TeamMember {
   _id: Id<"teamMembers">;
@@ -62,6 +63,7 @@ const formatDate = (dateString: string) => {
 };
 
 export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
+  const { levels } = useRoleLevels(roleId);
   const navigate = useNavigate();
   const teamMembers = useQuery(
     roleId ? api.teamMembers.listWithAssessmentSummaryByRole : api.teamMembers.listWithAssessmentSummary,
@@ -199,6 +201,7 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
                 setIsDialogOpen(false);
               }}
               roleId={roleId}
+              levels={levels}
             />
           </DialogContent>
         </Dialog>
@@ -363,6 +366,7 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
               setIsDialogOpen(false);
             }}
             roleId={roleId}
+            levels={levels}
           />
         </DialogContent>
       </Dialog>

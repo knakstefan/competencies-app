@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { Id } from "../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -16,16 +17,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
+export interface EditingRole {
+  _id: string;
+  title: string;
+  type: "ic" | "management";
+  description?: string;
+}
+
 interface CreateRoleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   existingCount: number;
+  editingRole?: EditingRole | null;
 }
 
 export const CreateRoleDialog = ({
   open,
   onOpenChange,
   existingCount,
+  editingRole,
 }: CreateRoleDialogProps) => {
   const [title, setTitle] = useState("");
   const [type, setType] = useState<"ic" | "management">("ic");
@@ -33,6 +43,21 @@ export const CreateRoleDialog = ({
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const createRole = useMutation(api.roles.create);
+  const updateRole = useMutation(api.roles.update);
+
+  const isEditing = !!editingRole;
+
+  useEffect(() => {
+    if (open && editingRole) {
+      setTitle(editingRole.title);
+      setType(editingRole.type);
+      setDescription(editingRole.description || "");
+    } else if (open) {
+      setTitle("");
+      setType("ic");
+      setDescription("");
+    }
+  }, [open, editingRole]);
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -46,17 +71,29 @@ export const CreateRoleDialog = ({
 
     setLoading(true);
     try {
-      await createRole({
-        title: title.trim(),
-        type,
-        description: description.trim() || undefined,
-        orderIndex: existingCount + 1,
-      });
-
-      toast({
-        title: "Success",
-        description: "Role created successfully",
-      });
+      if (isEditing) {
+        await updateRole({
+          id: editingRole._id as Id<"roles">,
+          title: title.trim(),
+          type,
+          description: description.trim() || undefined,
+        });
+        toast({
+          title: "Success",
+          description: "Role updated successfully",
+        });
+      } else {
+        await createRole({
+          title: title.trim(),
+          type,
+          description: description.trim() || undefined,
+          orderIndex: existingCount + 1,
+        });
+        toast({
+          title: "Success",
+          description: "Role created successfully",
+        });
+      }
 
       setTitle("");
       setType("ic");
@@ -65,7 +102,7 @@ export const CreateRoleDialog = ({
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to create role",
+        description: isEditing ? "Failed to update role" : "Failed to create role",
         variant: "destructive",
       });
     } finally {
@@ -77,9 +114,11 @@ export const CreateRoleDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Role</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Role" : "Create Role"}</DialogTitle>
           <DialogDescription>
-            Define a new role with its own competencies, team, and hiring pipeline.
+            {isEditing
+              ? "Update this role's title, type, or description."
+              : "Define a new role with its own competencies, team, and hiring pipeline."}
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +172,7 @@ export const CreateRoleDialog = ({
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={loading}>
-            {loading ? "Creating..." : "Create Role"}
+            {loading ? (isEditing ? "Saving..." : "Creating...") : (isEditing ? "Save Changes" : "Create Role")}
           </Button>
         </DialogFooter>
       </DialogContent>

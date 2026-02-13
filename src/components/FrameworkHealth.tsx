@@ -5,14 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, ChevronRight, Activity } from "lucide-react";
 import { Competency, SubCompetency } from "@/types/competency";
-
-const LEVELS = [
-  { key: "associateLevel" as const, label: "Associate" },
-  { key: "intermediateLevel" as const, label: "Intermediate" },
-  { key: "seniorLevel" as const, label: "Senior" },
-  { key: "leadLevel" as const, label: "Lead" },
-  { key: "principalLevel" as const, label: "Principal" },
-];
+import { RoleLevel, FALLBACK_LEVELS, getCriteriaForLevelWithFallback, getLevelOptions } from "@/lib/levelUtils";
 
 interface Gap {
   competencyTitle: string;
@@ -31,14 +24,17 @@ interface UnevenCriteria {
 interface FrameworkHealthProps {
   competencies: Competency[];
   subCompetencies: SubCompetency[];
+  levels?: RoleLevel[];
 }
 
-export const FrameworkHealth = ({ competencies, subCompetencies }: FrameworkHealthProps) => {
+export const FrameworkHealth = ({ competencies, subCompetencies, levels = FALLBACK_LEVELS }: FrameworkHealthProps) => {
   const [open, setOpen] = useState(false);
+
+  const levelOptions = getLevelOptions(levels);
 
   const totalCompetencies = competencies.length;
   const totalSubCompetencies = subCompetencies.length;
-  const totalLevelSlots = totalSubCompetencies * LEVELS.length;
+  const totalLevelSlots = totalSubCompetencies * levelOptions.length;
 
   let filledSlots = 0;
   const gaps: Gap[] = [];
@@ -50,9 +46,9 @@ export const FrameworkHealth = ({ competencies, subCompetencies }: FrameworkHeal
     const emptyLevels: string[] = [];
     const counts: Record<string, number> = {};
 
-    LEVELS.forEach(({ key, label }) => {
-      const criteria = sub[key];
-      const count = criteria?.length ?? 0;
+    levelOptions.forEach(({ key, label }) => {
+      const criteria = getCriteriaForLevelWithFallback(sub, key);
+      const count = criteria.length;
       counts[label] = count;
       if (count > 0) {
         filledSlots++;
@@ -157,7 +153,7 @@ export const FrameworkHealth = ({ competencies, subCompetencies }: FrameworkHeal
                             <span>{item.subCompetencyTitle}</span>
                           </div>
                           <div className="flex gap-1 flex-shrink-0 ml-3">
-                            {LEVELS.map(({ label }) => (
+                            {levelOptions.map(({ label }) => (
                               <Badge
                                 key={label}
                                 variant="outline"

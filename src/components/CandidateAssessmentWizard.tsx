@@ -14,6 +14,13 @@ import { Loader2, ChevronLeft, ChevronRight, Check, ArrowUp, ArrowDown } from "l
 import { AssessmentSummary } from "./AssessmentSummary";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { HiringCandidate } from "./HiringManagement";
+import {
+  RoleLevel,
+  FALLBACK_LEVELS,
+  getLevelBelow as sharedGetLevelBelow,
+  getLevelAbove as sharedGetLevelAbove,
+  getCriteriaForLevelWithFallback,
+} from "@/lib/levelUtils";
 
 interface Competency {
   _id: string;
@@ -30,6 +37,8 @@ interface CandidateAssessmentWizardProps {
   competencies: Competency[];
   subCompetencies: SubCompetency[];
   existingAssessmentId?: string | null;
+  stage?: { _id: string; title: string; stageType: string };
+  levels?: RoleLevel[];
 }
 
 export const CandidateAssessmentWizard = ({
@@ -39,6 +48,8 @@ export const CandidateAssessmentWizard = ({
   competencies,
   subCompetencies,
   existingAssessmentId = null,
+  stage,
+  levels = FALLBACK_LEVELS,
 }: CandidateAssessmentWizardProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [assessmentId, setAssessmentId] = useState<Id<"candidateAssessments"> | null>(null);
@@ -91,7 +102,8 @@ export const CandidateAssessmentWizard = ({
     try {
       const newId = await createDraftMutation({
         candidateId: candidate._id as Id<"hiringCandidates">,
-        stage: candidate.currentStage,
+        stage: stage ? stage._id : candidate.currentStage,
+        stageId: stage ? stage._id as Id<"hiringStages"> : undefined,
       });
 
       setAssessmentId(newId);
@@ -377,30 +389,11 @@ export const CandidateAssessmentWizard = ({
     ? competencies.find((c) => c._id === currentSubCompetency.competencyId)
     : null;
 
-  const getLevelBelow = (level: string): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    return index > 0 ? levels[index - 1] : null;
-  };
-
-  const getLevelAbove = (level: string): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    return index < levels.length - 1 ? levels[index + 1] : null;
-  };
+  const getLevelBelow = (level: string): string | null => sharedGetLevelBelow(levels, level);
+  const getLevelAbove = (level: string): string | null => sharedGetLevelAbove(levels, level);
 
   const getCriteriaForLevel = (sub: SubCompetency, level: string): string[] => {
-    const levelToCamelCase: Record<string, string> = {
-      associate: "associateLevel",
-      intermediate: "intermediateLevel",
-      senior: "seniorLevel",
-      lead: "leadLevel",
-      principal: "principalLevel",
-    };
-    const levelKey = levelToCamelCase[level] as keyof SubCompetency;
-    if (!levelKey) return [];
-    const criteria = sub[levelKey];
-    return Array.isArray(criteria) ? criteria : [];
+    return getCriteriaForLevelWithFallback(sub, level);
   };
 
   const currentData = currentSubCompetency ? assessmentData[currentSubCompetency._id] : null;

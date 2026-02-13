@@ -36,7 +36,7 @@ export function WizardNavigationRail({
   return (
     <div className="space-y-2">
       {/* Completion text */}
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between text-sm px-1">
         <span className="text-muted-foreground">
           {ratedCount} of {questions.length} rated
         </span>
@@ -46,7 +46,7 @@ export function WizardNavigationRail({
       </div>
 
       {/* Dot navigation */}
-      <div className="flex items-center gap-3 overflow-x-auto pb-1">
+      <div className="flex items-center gap-3 overflow-x-auto pb-1 px-1">
         {categoryGroups.map((group) => (
           <div key={group.category} className="flex flex-col gap-1 min-w-0">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/60 truncate">

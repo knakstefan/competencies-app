@@ -2,7 +2,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { ProgressViewSkeleton } from "./skeletons/ProgressViewSkeleton";
-import { HiringCandidate } from "./HiringManagement";
+import { HiringCandidate, HiringStage } from "./HiringManagement";
 import { StageProgressIndicator } from "./StageProgressIndicator";
 import { CandidateStageAssessments } from "./CandidateStageAssessments";
 
@@ -40,6 +40,12 @@ export const CandidateProgressView = ({
   const competencies = roleId ? roleCompetencies : globalCompetencies;
   const subCompetencies = roleId ? roleSubCompetencies : globalSubCompetencies;
 
+  // Fetch hiring stages for this role
+  const stages = useQuery(
+    api.hiringStages.listByRole,
+    roleId ? { roleId: roleId as Id<"roles"> } : "skip"
+  ) as HiringStage[] | undefined;
+
   // Fetch assessments to derive stage scores for the progress indicator
   const assessments = useQuery(api.candidateAssessments.listForCandidate, {
     candidateId: candidate._id as Id<"hiringCandidates">,
@@ -53,12 +59,13 @@ export const CandidateProgressView = ({
     }
   };
 
-  // Build stage scores map
+  // Build stage scores map — keyed by stageId or legacy stage string
   const stageScores: Record<string, number> = {};
   if (assessments) {
     for (const a of assessments) {
       if (a.status === "completed" && a.overallScore != null) {
-        stageScores[a.stage] = a.overallScore;
+        const key = a.stageId || a.stage;
+        stageScores[key] = a.overallScore;
       }
     }
   }
@@ -74,6 +81,7 @@ export const CandidateProgressView = ({
         isAdmin={isAdmin}
         onStageChange={handleStageChange}
         stageScores={stageScores}
+        stages={stages || []}
       />
 
       <CandidateStageAssessments
@@ -87,6 +95,7 @@ export const CandidateProgressView = ({
         }))}
         subCompetencies={subCompetencies || []}
         onDataChange={onDataChange}
+        stages={stages || []}
       />
     </div>
   );

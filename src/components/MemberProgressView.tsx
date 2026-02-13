@@ -32,6 +32,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
 
 interface AssessmentTrendData {
   date: string;
@@ -57,11 +58,7 @@ interface SubCompetency {
   competencyId: string;
   title: string;
   code?: string;
-  associateLevel: string[] | null;
-  intermediateLevel: string[] | null;
-  seniorLevel: string[] | null;
-  leadLevel: string[] | null;
-  principalLevel: string[] | null;
+  levelCriteria?: Record<string, string[]> | null;
   orderIndex: number;
 }
 
@@ -88,6 +85,7 @@ interface MemberProgressViewProps {
 }
 
 export const MemberProgressView = ({ member, isAdmin, onDataChange, roleId }: MemberProgressViewProps) => {
+  const { levels } = useRoleLevels(roleId);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const [selectedCompetency, setSelectedCompetency] = useState<Competency | null>(null);
@@ -635,6 +633,8 @@ export const MemberProgressView = ({ member, isAdmin, onDataChange, roleId }: Me
         competencies={competencies as any}
         subCompetencies={subCompetencies as any}
         existingAssessmentId={editingAssessmentId}
+        levels={levels}
+        roleId={roleId}
       />
 
       {selectedCompetency && (

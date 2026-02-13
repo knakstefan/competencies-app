@@ -15,17 +15,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { HiringCandidate } from "./HiringManagement";
+import { RoleLevel, FALLBACK_LEVELS, getLevelOptions } from "@/lib/levelUtils";
 
 interface CandidateFormProps {
   editingCandidate: HiringCandidate | null;
   onSuccess: () => void;
   onCancel: () => void;
   roleId?: string;
+  levels?: RoleLevel[];
 }
 
-const TARGET_ROLES = ["Associate", "Intermediate", "Senior", "Lead", "Principal"];
-
-export const CandidateForm = ({ editingCandidate, onSuccess, onCancel, roleId }: CandidateFormProps) => {
+export const CandidateForm = ({ editingCandidate, onSuccess, onCancel, roleId, levels = FALLBACK_LEVELS }: CandidateFormProps) => {
   const [name, setName] = useState(editingCandidate?.name || "");
   const [email, setEmail] = useState(editingCandidate?.email || "");
   const [portfolioUrl, setPortfolioUrl] = useState(editingCandidate?.portfolioUrl || "");
@@ -130,9 +130,9 @@ export const CandidateForm = ({ editingCandidate, onSuccess, onCancel, roleId }:
             <SelectValue placeholder="Select target role" />
           </SelectTrigger>
           <SelectContent>
-            {TARGET_ROLES.map((role) => (
-              <SelectItem key={role} value={role}>
-                {role}
+            {getLevelOptions(levels).map((l) => (
+              <SelectItem key={l.key} value={l.label}>
+                {l.label}
               </SelectItem>
             ))}
           </SelectContent>

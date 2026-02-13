@@ -10,6 +10,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -22,7 +23,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChartNetwork, MoreVertical, Trash2, Users, UserPlus } from "lucide-react";
+import { ChartNetwork, MoreVertical, Pencil, Trash2, Users, UserPlus } from "lucide-react";
+import { CreateRoleDialog, EditingRole } from "./CreateRoleDialog";
 
 interface RoleCardProps {
   role: {
@@ -40,6 +42,7 @@ interface RoleCardProps {
 
 export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const removeMutation = useMutation(api.roles.remove);
   const { toast } = useToast();
 
@@ -52,6 +55,13 @@ export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
     } catch {
       toast({ title: "Error", description: "Failed to delete role", variant: "destructive" });
     }
+  };
+
+  const editingRole: EditingRole = {
+    _id: role._id,
+    title: role.title,
+    type: role.type,
+    description: role.description,
   };
 
   return (
@@ -89,6 +99,16 @@ export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setEditOpen(true);
+                        }}
+                      >
+                        <Pencil className="w-4 h-4 mr-2" />
+                        Edit Role
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
                         className="text-destructive focus:text-destructive"
                         onClick={(e) => {
@@ -130,6 +150,13 @@ export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
           </CardContent>
         </Card>
       </Link>
+
+      <CreateRoleDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        existingCount={0}
+        editingRole={editingRole}
+      />
 
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
         <AlertDialogContent>

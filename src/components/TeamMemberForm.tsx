@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Id } from "../../convex/_generated/dataModel";
+import { RoleLevel, FALLBACK_LEVELS, getLevelOptions } from "@/lib/levelUtils";
 
 const teamMemberSchema = z.object({
   name: z.string().trim().min(1, "Name cannot be empty").max(100, "Name must be less than 100 characters"),
@@ -31,9 +32,10 @@ interface TeamMemberFormProps {
   } | null;
   onCancel?: () => void;
   roleId?: Id<"roles">;
+  levels?: RoleLevel[];
 }
 
-export const TeamMemberForm = ({ onSuccess, editingMember, onCancel, roleId }: TeamMemberFormProps) => {
+export const TeamMemberForm = ({ onSuccess, editingMember, onCancel, roleId, levels = FALLBACK_LEVELS }: TeamMemberFormProps) => {
   const [name, setName] = useState(editingMember?.name || "");
   const [role, setRole] = useState(editingMember?.role || "");
   const [startDate, setStartDate] = useState(editingMember?.startDate || "");
@@ -122,11 +124,9 @@ export const TeamMemberForm = ({ onSuccess, editingMember, onCancel, roleId }: T
                 <SelectValue placeholder="Select level" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Associate">Associate</SelectItem>
-                <SelectItem value="Intermediate">Intermediate</SelectItem>
-                <SelectItem value="Senior">Senior</SelectItem>
-                <SelectItem value="Lead">Lead</SelectItem>
-                <SelectItem value="Principal">Principal</SelectItem>
+                {getLevelOptions(levels).map((l) => (
+                  <SelectItem key={l.key} value={l.label}>{l.label}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

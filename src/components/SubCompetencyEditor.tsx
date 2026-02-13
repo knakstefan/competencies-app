@@ -6,6 +6,7 @@ import { Save, X } from "lucide-react";
 import { LevelCriteriaEditor } from "./LevelCriteriaEditor";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
+import { RoleLevel, FALLBACK_LEVELS, getCriteriaForLevelWithFallback } from "@/lib/levelUtils";
 
 const titleSchema = z.string()
   .trim()
@@ -16,24 +17,15 @@ interface SubCompetency {
   _id: string;
   title: string;
   code?: string;
-  associateLevel: string[] | null;
-  intermediateLevel: string[] | null;
-  seniorLevel: string[] | null;
-  leadLevel: string[] | null;
-  principalLevel: string[] | null;
+  levelCriteria?: Record<string, string[]> | null;
 }
 
 interface SubCompetencyEditorProps {
   subCompetency: SubCompetency;
-  onSave: (title: string, levels: {
-    associateLevel: string[];
-    intermediateLevel: string[];
-    seniorLevel: string[];
-    leadLevel: string[];
-    principalLevel: string[];
-  }) => void;
+  onSave: (title: string, levelCriteria: Record<string, string[]>) => void;
   onCancel: () => void;
   isNew?: boolean;
+  levels?: RoleLevel[];
 }
 
 export const SubCompetencyEditor = ({
@@ -41,25 +33,29 @@ export const SubCompetencyEditor = ({
   onSave,
   onCancel,
   isNew = false,
+  levels = FALLBACK_LEVELS,
 }: SubCompetencyEditorProps) => {
   const [title, setTitle] = useState(subCompetency.title);
-  const [levels, setLevels] = useState({
-    associateLevel: subCompetency.associateLevel || [],
-    intermediateLevel: subCompetency.intermediateLevel || [],
-    seniorLevel: subCompetency.seniorLevel || [],
-    leadLevel: subCompetency.leadLevel || [],
-    principalLevel: subCompetency.principalLevel || [],
+
+  // Initialize state from levelCriteria or fall back to legacy columns
+  const [criteria, setCriteria] = useState<Record<string, string[]>>(() => {
+    const result: Record<string, string[]> = {};
+    for (const level of levels) {
+      result[level.key] = getCriteriaForLevelWithFallback(subCompetency, level.key);
+    }
+    return result;
   });
+
   const { toast } = useToast();
 
-  const handleLevelUpdate = (levelKey: string, criteria: string[]) => {
-    setLevels({ ...levels, [levelKey]: criteria });
+  const handleLevelUpdate = (levelKey: string, newCriteria: string[]) => {
+    setCriteria({ ...criteria, [levelKey]: newCriteria });
   };
 
   const handleSave = () => {
     try {
       const validatedTitle = titleSchema.parse(title);
-      onSave(validatedTitle, levels);
+      onSave(validatedTitle, criteria);
     } catch (error) {
       if (error instanceof z.ZodError) {
         toast({
@@ -85,54 +81,24 @@ export const SubCompetencyEditor = ({
         />
       </div>
 
-      <Tabs defaultValue="associate" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="associate">Associate</TabsTrigger>
-          <TabsTrigger value="intermediate">Intermediate</TabsTrigger>
-          <TabsTrigger value="senior">Senior</TabsTrigger>
-          <TabsTrigger value="lead">Lead</TabsTrigger>
-          <TabsTrigger value="principal">Principal</TabsTrigger>
+      <Tabs defaultValue={levels[0]?.key} className="w-full">
+        <TabsList style={{ gridTemplateColumns: `repeat(${levels.length}, 1fr)` }} className="grid w-full">
+          {levels.map((level) => (
+            <TabsTrigger key={level.key} value={level.key}>
+              {level.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
-        <TabsContent value="associate" className="space-y-4">
-          <LevelCriteriaEditor
-            levelName="Associate Level"
-            criteria={levels.associateLevel}
-            onSave={(criteria) => handleLevelUpdate("associateLevel", criteria)}
-          />
-        </TabsContent>
-
-        <TabsContent value="intermediate" className="space-y-4">
-          <LevelCriteriaEditor
-            levelName="Intermediate Level"
-            criteria={levels.intermediateLevel}
-            onSave={(criteria) => handleLevelUpdate("intermediateLevel", criteria)}
-          />
-        </TabsContent>
-
-        <TabsContent value="senior" className="space-y-4">
-          <LevelCriteriaEditor
-            levelName="Senior Level"
-            criteria={levels.seniorLevel}
-            onSave={(criteria) => handleLevelUpdate("seniorLevel", criteria)}
-          />
-        </TabsContent>
-
-        <TabsContent value="lead" className="space-y-4">
-          <LevelCriteriaEditor
-            levelName="Lead Level"
-            criteria={levels.leadLevel}
-            onSave={(criteria) => handleLevelUpdate("leadLevel", criteria)}
-          />
-        </TabsContent>
-
-        <TabsContent value="principal" className="space-y-4">
-          <LevelCriteriaEditor
-            levelName="Principal Level"
-            criteria={levels.principalLevel}
-            onSave={(criteria) => handleLevelUpdate("principalLevel", criteria)}
-          />
-        </TabsContent>
+        {levels.map((level) => (
+          <TabsContent key={level.key} value={level.key} className="space-y-4">
+            <LevelCriteriaEditor
+              levelName={`${level.label} Level`}
+              criteria={criteria[level.key] || []}
+              onSave={(newCriteria) => handleLevelUpdate(level.key, newCriteria)}
+            />
+          </TabsContent>
+        ))}
       </Tabs>
 
       <div className="flex gap-2 justify-end pt-4 border-t">

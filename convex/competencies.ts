@@ -120,14 +120,16 @@ export const createSub = mutation({
     title: v.string(),
     code: v.optional(v.string()),
     orderIndex: v.number(),
-    associateLevel: v.optional(v.array(v.string())),
-    intermediateLevel: v.optional(v.array(v.string())),
-    seniorLevel: v.optional(v.array(v.string())),
-    leadLevel: v.optional(v.array(v.string())),
-    principalLevel: v.optional(v.array(v.string())),
+    levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("subCompetencies", args);
+    return await ctx.db.insert("subCompetencies", {
+      competencyId: args.competencyId,
+      title: args.title,
+      code: args.code,
+      orderIndex: args.orderIndex,
+      levelCriteria: args.levelCriteria || {},
+    });
   },
 });
 
@@ -137,11 +139,7 @@ export const updateSub = mutation({
     title: v.optional(v.string()),
     code: v.optional(v.string()),
     orderIndex: v.optional(v.number()),
-    associateLevel: v.optional(v.array(v.string())),
-    intermediateLevel: v.optional(v.array(v.string())),
-    seniorLevel: v.optional(v.array(v.string())),
-    leadLevel: v.optional(v.array(v.string())),
-    principalLevel: v.optional(v.array(v.string())),
+    levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;
@@ -181,11 +179,7 @@ export const bulkImport = mutation({
         title: v.string(),
         code: v.optional(v.string()),
         orderIndex: v.number(),
-        associateLevel: v.optional(v.array(v.string())),
-        intermediateLevel: v.optional(v.array(v.string())),
-        seniorLevel: v.optional(v.array(v.string())),
-        leadLevel: v.optional(v.array(v.string())),
-        principalLevel: v.optional(v.array(v.string())),
+        levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
       })),
     })),
     roleId: v.optional(v.id("roles")),
@@ -199,8 +193,11 @@ export const bulkImport = mutation({
       });
       for (const sub of subCompetencies) {
         await ctx.db.insert("subCompetencies", {
-          ...sub,
           competencyId: compId,
+          title: sub.title,
+          code: sub.code,
+          orderIndex: sub.orderIndex,
+          levelCriteria: sub.levelCriteria || {},
         });
       }
     }

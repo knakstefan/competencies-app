@@ -5,8 +5,15 @@ import heroImage from "@/assets/competency-hero.jpg";
 import growthIcon from "@/assets/growth-path-icon.jpg";
 import collaborationIcon from "@/assets/collaboration-icon.jpg";
 import visionIcon from "@/assets/vision-icon.jpg";
+import { RoleLevel, FALLBACK_LEVELS } from "@/lib/levelUtils";
 
-export const CompetencyIntroduction = () => {
+interface CompetencyIntroductionProps {
+  levels?: RoleLevel[];
+}
+
+export const CompetencyIntroduction = ({ levels = FALLBACK_LEVELS }: CompetencyIntroductionProps) => {
+  const firstLevel = levels[0];
+  const lastLevel = levels[levels.length - 1];
   return (
     <div className="space-y-12 mb-16">
       {/* Hero Section */}
@@ -20,7 +27,7 @@ export const CompetencyIntroduction = () => {
         
         <div className="relative z-10 px-8 py-16 md:px-16 md:py-24">
           <Badge className="mb-6 text-lg px-4 py-2 bg-primary/20 border-primary/40">
-            P1–P5 Framework
+            P1–P{levels.length} Framework
           </Badge>
           
           <h1 className="text-5xl md:text-7xl font-bold mb-6 gradient-heading leading-tight">
@@ -30,7 +37,7 @@ export const CompetencyIntroduction = () => {
           </h1>
           
           <p className="text-xl md:text-2xl text-muted-foreground mb-2 font-light">
-            Associate → Principal
+            {firstLevel?.label ?? "Associate"} → {lastLevel?.label ?? "Principal"}
           </p>
           
           <p className="text-lg text-muted-foreground/80 italic">
@@ -67,7 +74,7 @@ export const CompetencyIntroduction = () => {
               <div className="mt-1 p-1 rounded bg-primary/10">
                 <div className="w-2 h-2 rounded-full bg-primary" />
               </div>
-              <span>Clear growth paths from P1 (Associate) to P5 (Principal)</span>
+              <span>Clear growth paths from P1 ({firstLevel?.label ?? "Associate"}) to P{levels.length} ({lastLevel?.label ?? "Principal"})</span>
             </li>
             <li className="flex items-start gap-3">
               <div className="mt-1 p-1 rounded bg-primary/10">
@@ -151,59 +158,23 @@ export const CompetencyIntroduction = () => {
             
             <div className="flex items-center gap-3 mb-4">
               <Telescope className="w-6 h-6 text-primary" />
-              <h3 className="text-2xl font-bold">Understanding Levels (P1–P5)</h3>
+              <h3 className="text-2xl font-bold">Understanding Levels (P1–P{levels.length})</h3>
             </div>
             
             <div className="space-y-4">
-              <div className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">P1</Badge>
-                  <span className="font-semibold text-sm">Associate</span>
+              {levels.map((level, index) => (
+                <div key={level.key} className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="outline" className="text-xs">P{index + 1}</Badge>
+                    <span className="font-semibold text-sm">{level.label}</span>
+                  </div>
+                  {level.description && (
+                    <p className="text-sm text-muted-foreground">
+                      {level.description}
+                    </p>
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Learns foundational skills; completes well-defined tasks with guidance; focused on craft fundamentals and understanding processes.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">P2</Badge>
-                  <span className="font-semibold text-sm">Intermediate</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Independently executes standard design work; contributes meaningfully to team discussions; shows growing ownership and consistency.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">P3</Badge>
-                  <span className="font-semibold text-sm">Senior</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Owns large, complex features or problem spaces; synthesizes insights; drives cross-functional alignment; mentors others informally.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">P4</Badge>
-                  <span className="font-semibold text-sm">Lead</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Owns UX direction across product areas; mentors designers; drives multi-team alignment; influences strategy and process improvements.
-                </p>
-              </div>
-
-              <div className="p-4 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">P5</Badge>
-                  <span className="font-semibold text-sm">Principal</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Sets organization-wide UX vision; leads cross-org alignment; defines systems, frameworks, and long-term design strategy.
-                </p>
-              </div>
+              ))}
             </div>
           </CardContent>
         </Card>

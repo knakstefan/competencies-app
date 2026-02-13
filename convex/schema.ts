@@ -33,11 +33,13 @@ export default defineSchema({
     title: v.string(),
     code: v.optional(v.string()),
     orderIndex: v.number(),
+    // Legacy columns — kept optional for existing documents pre-migration
     associateLevel: v.optional(v.array(v.string())),
     intermediateLevel: v.optional(v.array(v.string())),
     seniorLevel: v.optional(v.array(v.string())),
     leadLevel: v.optional(v.array(v.string())),
     principalLevel: v.optional(v.array(v.string())),
+    levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
   })
     .index("by_competencyId", ["competencyId"])
     .index("by_orderIndex", ["orderIndex"]),
@@ -60,6 +62,13 @@ export default defineSchema({
     notes: v.optional(v.string()),
     completedAt: v.optional(v.string()),
     updatedAt: v.string(),
+    generatedPrompts: v.optional(v.array(v.object({
+      subCompetencyId: v.string(),
+      prompts: v.array(v.object({
+        question: v.string(),
+        lookFor: v.string(),
+      })),
+    }))),
   })
     .index("by_memberId", ["memberId"])
     .index("by_status", ["status"]),
@@ -109,6 +118,12 @@ export default defineSchema({
   candidateAssessments: defineTable({
     candidateId: v.id("hiringCandidates"),
     stage: v.string(),
+    stageId: v.optional(v.id("hiringStages")),
+    generatedQuestions: v.optional(v.array(v.object({
+      category: v.string(),
+      question: v.string(),
+      signal: v.string(),
+    }))),
     status: v.string(),
     overallScore: v.optional(v.number()),
     notes: v.optional(v.string()),
@@ -159,4 +174,27 @@ export default defineSchema({
   })
     .index("by_assessmentId", ["assessmentId"])
     .index("by_candidateId", ["candidateId"]),
+
+  roleLevels: defineTable({
+    roleId: v.id("roles"),
+    key: v.string(),
+    label: v.string(),
+    description: v.optional(v.string()),
+    orderIndex: v.number(),
+  })
+    .index("by_roleId", ["roleId"])
+    .index("by_roleId_orderIndex", ["roleId", "orderIndex"]),
+
+  hiringStages: defineTable({
+    roleId: v.id("roles"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    stageType: v.literal("ai_interview"),
+    aiInstructions: v.optional(v.string()),
+    gateMinScore: v.optional(v.number()),
+    gateMinRatedPct: v.optional(v.number()),
+    orderIndex: v.number(),
+  })
+    .index("by_roleId", ["roleId"])
+    .index("by_roleId_orderIndex", ["roleId", "orderIndex"]),
 });

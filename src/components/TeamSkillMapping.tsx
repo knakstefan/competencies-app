@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { SkillMappingSkeleton } from "./skeletons/SkillMappingSkeleton";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
+import { buildLevelBaseScores, labelToKey, getMaxChartScale as sharedGetMaxChartScale } from "@/lib/levelUtils";
 
 interface TeamMember {
   _id: string;
@@ -30,39 +32,12 @@ const CHART_COLORS = [
   'hsl(30, 80%, 55%)',
 ];
 
-const LEVEL_BASE_SCORES: Record<string, number> = {
-  'associate': 2,
-  'intermediate': 4,
-  'senior': 6,
-  'lead': 8,
-  'principal': 10,
-};
-
 const EVALUATION_MODIFIERS: Record<string, number> = {
   'well_below': -2,
   'below': -1,
   'target': 0,
-  'above': 2,      // Equals next level's target (levels are 2 apart)
-  'well_above': 4, // Equals next level's above
-};
-
-// Determine the maximum chart scale based on highest role in team
-const getMaxChartScale = (members: TeamMember[]): number => {
-  const levels = members.map(m => m.role.toLowerCase());
-
-  if (levels.includes('principal')) {
-    return 14; // 10 base + 4 well_above
-  }
-  if (levels.includes('lead')) {
-    return 12; // 8 base + 4 well_above
-  }
-  if (levels.includes('senior')) {
-    return 10; // 6 base + 4 well_above
-  }
-  if (levels.includes('intermediate')) {
-    return 8;  // 4 base + 4 well_above
-  }
-  return 6;    // 2 base + 4 well_above (associate only)
+  'above': 2,
+  'well_above': 4,
 };
 
 interface TeamSkillMappingProps {
@@ -70,6 +45,8 @@ interface TeamSkillMappingProps {
 }
 
 export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
+  const { levels } = useRoleLevels(roleId);
+  const LEVEL_BASE_SCORES = buildLevelBaseScores(levels);
   const globalData = useQuery(
     api.teamSkillData.getTeamSkillData,
     roleId ? "skip" : {}
@@ -102,7 +79,8 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
   }
 
   // Calculate max scale based on team composition
-  const maxScale = getMaxChartScale(members);
+  const memberLevelKeys = members.map((m: TeamMember) => labelToKey(levels, m.role));
+  const maxScale = sharedGetMaxChartScale(levels, memberLevelKeys);
 
   // Convert latestAssessmentByMember object to a Map for consistent usage
   const latestAssessmentMap = new Map<string, string>(
@@ -149,8 +127,8 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
       }
 
       // Get base score from member's level
-      const memberLevel = member.role.toLowerCase();
-      const baseScore = LEVEL_BASE_SCORES[memberLevel] || 4; // default to intermediate
+      const memberKey = labelToKey(levels, member.role);
+      const baseScore = LEVEL_BASE_SCORES[memberKey] || 4;
 
       // Calculate skill level: base + average evaluation modifier
       let totalModifier = 0;

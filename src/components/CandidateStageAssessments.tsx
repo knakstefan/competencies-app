@@ -8,8 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Edit, Trash2, Check, FileText, Loader2, PlayCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { HiringCandidate } from "./HiringManagement";
+import { HiringCandidate, HiringStage } from "./HiringManagement";
 import { SubCompetency as SubCompetencyType } from "@/types/competency";
+import { isTerminalStage, getStageIndex } from "@/lib/stageUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,7 +24,6 @@ import {
 
 import { ManagerInterviewWizard } from "./wizards/ManagerInterviewWizard";
 import { PortfolioReviewWizard } from "./wizards/PortfolioReviewWizard";
-import { CandidateAssessmentWizard } from "./CandidateAssessmentWizard";
 
 interface CandidateStageAssessmentsProps {
   candidate: HiringCandidate;
@@ -31,21 +31,8 @@ interface CandidateStageAssessmentsProps {
   competencies: Array<{ _id: string; title: string; code: string; orderIndex: number }>;
   subCompetencies: SubCompetencyType[];
   onDataChange?: () => void;
+  stages: HiringStage[];
 }
-
-const STAGE_ORDER = ["manager_interview", "portfolio_review", "team_interview"];
-
-const STAGE_NAMES: Record<string, string> = {
-  manager_interview: "Manager Interview",
-  portfolio_review: "Portfolio Review",
-  team_interview: "Team Interview",
-};
-
-const STAGE_DESCRIPTIONS: Record<string, string> = {
-  manager_interview: "Covers background, collaboration style, and design approach through structured questions.",
-  portfolio_review: "Evaluates design work across competency areas with level-specific criteria.",
-  team_interview: "Assesses competencies against the framework criteria for the target level.",
-};
 
 export const CandidateStageAssessments = ({
   candidate,
@@ -53,6 +40,7 @@ export const CandidateStageAssessments = ({
   competencies,
   subCompetencies,
   onDataChange,
+  stages,
 }: CandidateStageAssessmentsProps) => {
   const assessments = useQuery(api.candidateAssessments.listForCandidate, {
     candidateId: candidate._id as Id<"hiringCandidates">,
@@ -60,7 +48,10 @@ export const CandidateStageAssessments = ({
   const removeAssessment = useMutation(api.candidateAssessments.remove);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // activeWizard stores the stage _id (or legacy key) that triggers a wizard
   const [activeWizard, setActiveWizard] = useState<string | null>(null);
+  const [activeWizardType, setActiveWizardType] = useState<"ai_interview" | "legacy_portfolio" | null>(null);
+  const [activeStageData, setActiveStageData] = useState<HiringStage | null>(null);
   const [editingAssessmentId, setEditingAssessmentId] = useState<string | null>(null);
 
   const { toast } = useToast();
@@ -70,22 +61,48 @@ export const CandidateStageAssessments = ({
     (a, b) => a._creationTime - b._creationTime
   );
 
-  const getAssessmentForStage = (stage: string) => {
-    return sortedAssessments.find((a) => a.stage === stage);
+  // Match assessment to stage: prefer stageId, then fall back to legacy stage string
+  const getAssessmentForStage = (stage: HiringStage) => {
+    return sortedAssessments.find(
+      (a) => a.stageId === stage._id || (!a.stageId && matchesLegacy(a.stage, stage.title))
+    );
   };
 
-  const handleCreate = (stage: string) => {
+  // Match legacy stage string to DB stage title
+  function matchesLegacy(legacyStage: string, stageTitle: string): boolean {
+    const legacyMap: Record<string, string> = {
+      manager_interview: "Manager Interview",
+      portfolio_review: "Portfolio Review",
+      team_interview: "Team Interview",
+    };
+    return legacyMap[legacyStage] === stageTitle;
+  }
+
+  const handleCreate = (stage: HiringStage) => {
     setEditingAssessmentId(null);
-    setActiveWizard(stage);
+    setActiveWizard(stage._id);
+    setActiveWizardType("ai_interview");
+    setActiveStageData(stage);
   };
 
-  const handleEdit = (assessment: any) => {
+  const handleEdit = (assessment: any, stage: HiringStage) => {
     setEditingAssessmentId(assessment._id);
-    setActiveWizard(assessment.stage);
+    // Legacy portfolio_review without stageId → open PortfolioReviewWizard
+    if (!assessment.stageId && assessment.stage === "portfolio_review") {
+      setActiveWizard("portfolio_review");
+      setActiveWizardType("legacy_portfolio");
+      setActiveStageData(null);
+    } else {
+      setActiveWizard(stage._id);
+      setActiveWizardType("ai_interview");
+      setActiveStageData(stage);
+    }
   };
 
   const handleWizardClose = () => {
     setActiveWizard(null);
+    setActiveWizardType(null);
+    setActiveStageData(null);
     setEditingAssessmentId(null);
     onDataChange?.();
   };
@@ -118,22 +135,22 @@ export const CandidateStageAssessments = ({
     );
   }
 
-  const isTerminal = candidate.currentStage === "hired" || candidate.currentStage === "rejected";
-  const activeStageIndex = STAGE_ORDER.indexOf(candidate.currentStage);
+  const isTerminal = isTerminalStage(candidate.currentStage);
+  const activeStageIndex = getStageIndex(candidate.currentStage, stages);
 
   return (
     <>
       <div className="space-y-4">
-        {STAGE_ORDER.map((stage, index) => {
+        {stages.map((stage, index) => {
           const assessment = getAssessmentForStage(stage);
-          const isActiveStage = stage === candidate.currentStage;
+          const isActiveStage = stage._id === candidate.currentStage;
           const isPastStage = isTerminal || index < activeStageIndex;
           const isFutureStage = !isTerminal && !isActiveStage && index > activeStageIndex;
 
           // Active stage — hero card
           if (isActiveStage && !isTerminal) {
             return (
-              <div key={stage} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
+              <div key={stage._id} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
                 {!assessment ? (
                   // Active stage, no assessment — CTA card
                   <button
@@ -150,10 +167,10 @@ export const CandidateStageAssessments = ({
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-lg">{STAGE_NAMES[stage]}</h3>
+                          <h3 className="font-semibold text-lg">{stage.title}</h3>
                           <Badge variant="default" className="text-xs">Current Stage</Badge>
                         </div>
-                        <p className="text-sm text-muted-foreground">{STAGE_DESCRIPTIONS[stage]}</p>
+                        <p className="text-sm text-muted-foreground">{stage.description || ""}</p>
                       </div>
                       {isAdmin && (
                         <Button size="lg" className="gap-2 shrink-0">
@@ -167,7 +184,7 @@ export const CandidateStageAssessments = ({
                   // Active stage, draft — continue banner
                   <Card
                     className="relative overflow-hidden cursor-pointer ring-1 ring-primary/30 transition-all hover:shadow-xl hover:shadow-primary/5"
-                    onClick={() => handleEdit(assessment)}
+                    onClick={() => handleEdit(assessment, stage)}
                   >
                     <div className="h-0.5 bg-gradient-knak" />
                     <CardContent className="p-6">
@@ -178,7 +195,7 @@ export const CandidateStageAssessments = ({
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-lg">{STAGE_NAMES[stage]}</h3>
+                              <h3 className="font-semibold text-lg">{stage.title}</h3>
                               <Badge variant="secondary">Draft</Badge>
                               <Badge variant="default" className="text-xs">Current Stage</Badge>
                             </div>
@@ -213,7 +230,7 @@ export const CandidateStageAssessments = ({
                       "relative overflow-hidden transition-all",
                       isAdmin && "cursor-pointer hover:shadow-xl hover:shadow-primary/5"
                     )}
-                    onClick={() => isAdmin && handleEdit(assessment)}
+                    onClick={() => isAdmin && handleEdit(assessment, stage)}
                   >
                     <div className="h-0.5 bg-gradient-knak" />
                     <CardContent className="p-6">
@@ -224,7 +241,7 @@ export const CandidateStageAssessments = ({
                           </div>
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <h3 className="font-semibold text-lg">{STAGE_NAMES[stage]}</h3>
+                              <h3 className="font-semibold text-lg">{stage.title}</h3>
                               <Badge variant="default" className="text-xs">Completed</Badge>
                               <Badge variant="default" className="text-xs">Current Stage</Badge>
                             </div>
@@ -242,7 +259,7 @@ export const CandidateStageAssessments = ({
                           )}
                           {isAdmin && (
                             <div className="flex items-center gap-1">
-                              <Button variant="outline" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(assessment); }}>
+                              <Button variant="outline" size="icon" className="h-8 w-8" onClick={(e) => { e.stopPropagation(); handleEdit(assessment, stage); }}>
                                 <Edit className="h-4 w-4" />
                               </Button>
                               <Button
@@ -264,17 +281,17 @@ export const CandidateStageAssessments = ({
             );
           }
 
-          // Past or terminal completed stages — compact cards in a row
+          // Past or terminal completed stages — compact cards
           if (isPastStage || isTerminal) {
             return (
-              <div key={stage} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
+              <div key={stage._id} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
                 {!assessment ? (
                   <Card className="opacity-50">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-3">
                         <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
                         <div className="flex-1">
-                          <p className="font-medium text-sm">{STAGE_NAMES[stage]}</p>
+                          <p className="font-medium text-sm">{stage.title}</p>
                           <p className="text-xs text-muted-foreground">Not started</p>
                         </div>
                       </div>
@@ -286,7 +303,7 @@ export const CandidateStageAssessments = ({
                       "relative overflow-hidden transition-all",
                       isAdmin && "cursor-pointer hover:shadow-xl hover:shadow-primary/5"
                     )}
-                    onClick={() => isAdmin && handleEdit(assessment)}
+                    onClick={() => isAdmin && handleEdit(assessment, stage)}
                   >
                     <div className="h-0.5 bg-gradient-knak" />
                     <CardContent className="p-4">
@@ -297,7 +314,7 @@ export const CandidateStageAssessments = ({
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-medium text-sm">{STAGE_NAMES[stage]}</span>
+                              <span className="font-medium text-sm">{stage.title}</span>
                               <Badge variant={assessment.status === "completed" ? "default" : "secondary"} className="text-xs">
                                 {assessment.status === "completed" ? "Completed" : "Draft"}
                               </Badge>
@@ -335,7 +352,7 @@ export const CandidateStageAssessments = ({
           // Future stages — muted placeholders
           if (isFutureStage) {
             return (
-              <div key={stage} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
+              <div key={stage._id} className="animate-fade-up" style={{ animationDelay: `${index * 80}ms` }}>
                 <Card className="opacity-40">
                   <CardContent className="p-4">
                     <div className="flex items-center gap-3">
@@ -343,7 +360,7 @@ export const CandidateStageAssessments = ({
                         <span className="text-xs font-medium text-muted-foreground">{index + 1}</span>
                       </div>
                       <div>
-                        <p className="font-medium text-sm">{STAGE_NAMES[stage]}</p>
+                        <p className="font-medium text-sm">{stage.title}</p>
                         <p className="text-xs text-muted-foreground">Upcoming</p>
                       </div>
                     </div>
@@ -357,26 +374,20 @@ export const CandidateStageAssessments = ({
         })}
       </div>
 
+      {/* AI Interview wizard — for ai_interview stages */}
       <ManagerInterviewWizard
-        open={activeWizard === "manager_interview"}
+        open={activeWizardType === "ai_interview" && !!activeWizard}
         onClose={handleWizardClose}
         candidate={candidate}
         existingAssessmentId={editingAssessmentId}
+        stage={activeStageData || undefined}
       />
 
+      {/* Legacy portfolio review wizard */}
       <PortfolioReviewWizard
-        open={activeWizard === "portfolio_review"}
+        open={activeWizardType === "legacy_portfolio" && !!activeWizard}
         onClose={handleWizardClose}
         candidate={candidate}
-        existingAssessmentId={editingAssessmentId}
-      />
-
-      <CandidateAssessmentWizard
-        open={activeWizard === "team_interview"}
-        onClose={handleWizardClose}
-        candidate={candidate}
-        competencies={competencies}
-        subCompetencies={subCompetencies}
         existingAssessmentId={editingAssessmentId}
       />
 

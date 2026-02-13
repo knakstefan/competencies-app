@@ -29,6 +29,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { RoleLevel, FALLBACK_LEVELS, getCriteriaForLevelWithFallback, getLevelOptions } from "@/lib/levelUtils";
 
 const titleSchema = z
   .string()
@@ -42,11 +43,7 @@ interface SubCompetency {
   code?: string;
   orderIndex?: number;
   competencyId: string;
-  associateLevel: string[] | null;
-  intermediateLevel: string[] | null;
-  seniorLevel: string[] | null;
-  leadLevel: string[] | null;
-  principalLevel: string[] | null;
+  levelCriteria?: Record<string, string[]> | null;
 }
 
 interface SortableSubCompetencyProps {
@@ -54,9 +51,10 @@ interface SortableSubCompetencyProps {
   editingSubId: string | null;
   onStartEdit: (sub: SubCompetency) => void;
   onCancelEdit: () => void;
-  onSave: (subId: string, title: string, levels: any) => void;
+  onSave: (subId: string, title: string, levelCriteria: Record<string, string[]>) => void;
   onDelete: (id: string) => void;
   isCollapsed: boolean;
+  levels: RoleLevel[];
 }
 
 const SortableSubCompetency = ({
@@ -67,6 +65,7 @@ const SortableSubCompetency = ({
   onSave,
   onDelete,
   isCollapsed,
+  levels,
 }: SortableSubCompetencyProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: sub._id,
@@ -85,21 +84,11 @@ const SortableSubCompetency = ({
     _id: sub._id,
     title: sub.title,
     code: sub.code,
-    associateLevel: sub.associateLevel,
-    intermediateLevel: sub.intermediateLevel,
-    seniorLevel: sub.seniorLevel,
-    leadLevel: sub.leadLevel,
-    principalLevel: sub.principalLevel,
+    levelCriteria: sub.levelCriteria,
   };
 
-  // Map camelCase keys for level display
-  const levelKeys = [
-    { key: "associateLevel" as keyof SubCompetency, label: "Associate" },
-    { key: "intermediateLevel" as keyof SubCompetency, label: "Intermediate" },
-    { key: "seniorLevel" as keyof SubCompetency, label: "Senior" },
-    { key: "leadLevel" as keyof SubCompetency, label: "Lead" },
-    { key: "principalLevel" as keyof SubCompetency, label: "Principal" },
-  ];
+  // Dynamic level options derived from role levels
+  const levelOptions = getLevelOptions(levels);
 
   return (
     <div
@@ -116,8 +105,9 @@ const SortableSubCompetency = ({
         {editingSubId === sub._id ? (
           <SubCompetencyEditor
             subCompetency={subForEditor}
-            onSave={(title, levels) => onSave(sub._id, title, levels)}
+            onSave={(title, levelCriteria) => onSave(sub._id, title, levelCriteria)}
             onCancel={onCancelEdit}
+            levels={levels}
           />
         ) : (
           <>
@@ -138,8 +128,8 @@ const SortableSubCompetency = ({
 
             {!isCollapsed && (
               <div className="space-y-3">
-                {levelKeys.map((level) => {
-                  const criteria = (sub[level.key] as string[]) || [];
+                {levelOptions.map((level) => {
+                  const criteria = getCriteriaForLevelWithFallback(sub, level.key);
 
                   return (
                     <div key={level.key} className="rounded-lg p-3 bg-muted/40">
@@ -173,6 +163,7 @@ interface CompetencyEditorProps {
   subCompetencies: SubCompetency[];
   onUpdate: () => void;
   isCollapsed?: boolean;
+  levels?: RoleLevel[];
 }
 
 export const CompetencyEditor = ({
@@ -183,6 +174,7 @@ export const CompetencyEditor = ({
   subCompetencies,
   onUpdate,
   isCollapsed = false,
+  levels = FALLBACK_LEVELS,
 }: CompetencyEditorProps) => {
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -231,23 +223,13 @@ export const CompetencyEditor = ({
   const saveAllLevels = async (
     subId: string,
     title: string,
-    levels: {
-      associateLevel: string[];
-      intermediateLevel: string[];
-      seniorLevel: string[];
-      leadLevel: string[];
-      principalLevel: string[];
-    },
+    levelCriteria: Record<string, string[]>,
   ) => {
     try {
       await updateSubMutation({
         id: subId as any,
         title,
-        associateLevel: levels.associateLevel,
-        intermediateLevel: levels.intermediateLevel,
-        seniorLevel: levels.seniorLevel,
-        leadLevel: levels.leadLevel,
-        principalLevel: levels.principalLevel,
+        levelCriteria,
       });
 
       toast({
@@ -268,13 +250,7 @@ export const CompetencyEditor = ({
 
   const addNewSubCompetency = async (
     title: string,
-    levels: {
-      associateLevel: string[];
-      intermediateLevel: string[];
-      seniorLevel: string[];
-      leadLevel: string[];
-      principalLevel: string[];
-    },
+    levelCriteria: Record<string, string[]>,
   ) => {
     try {
       const maxOrderIndex =
@@ -284,11 +260,7 @@ export const CompetencyEditor = ({
         competencyId: competencyId as any,
         title: title,
         orderIndex: maxOrderIndex + 1,
-        associateLevel: levels.associateLevel,
-        intermediateLevel: levels.intermediateLevel,
-        seniorLevel: levels.seniorLevel,
-        leadLevel: levels.leadLevel,
-        principalLevel: levels.principalLevel,
+        levelCriteria,
       });
 
       toast({
@@ -427,6 +399,7 @@ export const CompetencyEditor = ({
                       onSave={saveAllLevels}
                       onDelete={deleteSubCompetency}
                       isCollapsed={collapsedSubStates[sub._id] || false}
+                      levels={levels}
                     />
                   ))}
 
@@ -437,15 +410,11 @@ export const CompetencyEditor = ({
                           _id: "new",
                           title: "",
                           code: `${competencyNumber}.${subCompetencies.length + 1}`,
-                          associateLevel: [],
-                          intermediateLevel: [],
-                          seniorLevel: [],
-                          leadLevel: [],
-                          principalLevel: [],
                         }}
-                        onSave={(title, levels) => addNewSubCompetency(title, levels)}
+                        onSave={(title, levelCriteria) => addNewSubCompetency(title, levelCriteria)}
                         onCancel={cancelAddingNew}
                         isNew
+                        levels={levels}
                       />
                     </div>
                   )}

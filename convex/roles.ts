@@ -225,6 +225,24 @@ export const remove = mutation({
       await ctx.db.delete(candidate._id);
     }
 
+    // Delete hiring stages
+    const hiringStages = await ctx.db
+      .query("hiringStages")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.id))
+      .collect();
+    for (const stage of hiringStages) {
+      await ctx.db.delete(stage._id);
+    }
+
+    // Delete role levels
+    const roleLevels = await ctx.db
+      .query("roleLevels")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.id))
+      .collect();
+    for (const level of roleLevels) {
+      await ctx.db.delete(level._id);
+    }
+
     await ctx.db.delete(args.id);
   },
 });

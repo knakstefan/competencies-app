@@ -23,6 +23,8 @@ import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 import { Id } from "../../convex/_generated/dataModel";
 import { ManageTabSkeleton } from "./skeletons/ManageTabSkeleton";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
+import { RoleLevel } from "@/lib/levelUtils";
 import {
   DndContext,
   closestCenter,
@@ -56,6 +58,7 @@ interface SortableCompetencyProps {
   onDelete: (comp: Competency) => void;
   isCollapsed: boolean;
   orderNumber: number;
+  levels: RoleLevel[];
 }
 
 const SortableCompetency = ({
@@ -66,6 +69,7 @@ const SortableCompetency = ({
   onDelete,
   isCollapsed,
   orderNumber,
+  levels,
 }: SortableCompetencyProps) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: comp._id,
@@ -113,6 +117,7 @@ const SortableCompetency = ({
         subCompetencies={subs}
         onUpdate={onUpdate}
         isCollapsed={isCollapsed}
+        levels={levels}
       />
     </div>
   );
@@ -127,6 +132,7 @@ interface ManageTabProps {
 }
 
 export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = false, roleId }: ManageTabProps) => {
+  const { levels } = useRoleLevels(roleId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompetency, setEditingCompetency] = useState<Competency | null>(null);
   const [formData, setFormData] = useState({ title: "", description: "" });
@@ -297,31 +303,23 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
       {loading ? (
         <ManageTabSkeleton />
       ) : (
-        <div className="max-w-5xl mx-auto">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-semibold text-foreground mb-2">Product Designer Competencies</h2>
-              <p className="text-muted-foreground text-sm">
-                A complete set of competencies for the Product Designer role at Knak.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
-                <Upload className="w-4 h-4" />
-                Import
-              </Button>
-              <Button variant="outline" onClick={() => setExportDialogOpen(true)}>
-                <Download className="w-4 h-4" />
-                Export
-              </Button>
-              <Button onClick={openAddDialog}>
-                <Plus className="w-4 h-4" />
-                Add Competency
-              </Button>
-            </div>
+        <>
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+              <Upload className="w-4 h-4" />
+              Import
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
+              <Download className="w-4 h-4" />
+              Export
+            </Button>
+            <Button size="sm" onClick={openAddDialog}>
+              <Plus className="w-4 h-4" />
+              Add Competency
+            </Button>
           </div>
 
-          <FrameworkHealth competencies={competencies} subCompetencies={subCompetencies} />
+          <FrameworkHealth competencies={competencies} subCompetencies={subCompetencies} levels={levels} />
 
           <DndContext
             sensors={sensors}
@@ -343,6 +341,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
                       onDelete={handleDelete}
                       isCollapsed={collapsedStates[comp._id] || false}
                       orderNumber={index + 1}
+                      levels={levels}
                     />
                   );
                 })}
@@ -369,6 +368,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
                           subCompetencies={subs}
                           onUpdate={onUpdate}
                           isCollapsed={true}
+                          levels={levels}
                         />
                       </div>
                     );
@@ -377,7 +377,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
               ) : null}
             </DragOverlay>
           </DndContext>
-        </div>
+        </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -430,6 +430,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
         onOpenChange={setExportDialogOpen}
         competencies={competencies}
         subCompetencies={subCompetencies}
+        levels={levels}
       />
 
       <CompetencyImportDialog

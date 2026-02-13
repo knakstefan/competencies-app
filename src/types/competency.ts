@@ -11,11 +11,7 @@ export interface SubCompetency {
   competencyId: string;
   title: string;
   code?: string;
-  associateLevel: string[] | null;
-  intermediateLevel: string[] | null;
-  seniorLevel: string[] | null;
-  leadLevel: string[] | null;
-  principalLevel: string[] | null;
+  levelCriteria?: Record<string, string[]> | null;
   orderIndex: number;
 }
 

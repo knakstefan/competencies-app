@@ -1,4 +1,5 @@
 import { Competency, SubCompetency } from "@/types/competency";
+import { RoleLevel, FALLBACK_LEVELS, IC_LEVELS, MANAGEMENT_LEVELS, getCriteriaForLevelWithFallback, getLevelOptions } from "@/lib/levelUtils";
 
 export interface CompetencyExportData {
   competencies: Array<{
@@ -6,23 +7,10 @@ export interface CompetencyExportData {
     description?: string | null;
     subCompetencies: Array<{
       title: string;
-      associate_level: string[];
-      intermediate_level: string[];
-      senior_level: string[];
-      lead_level: string[];
-      principal_level: string[];
+      level_criteria: Record<string, string[]>;
     }>;
   }>;
 }
-
-const LEVELS = ["associate", "intermediate", "senior", "lead", "principal"] as const;
-const LEVEL_LABELS: Record<string, string> = {
-  associate: "Associate",
-  intermediate: "Intermediate",
-  senior: "Senior",
-  lead: "Lead",
-  principal: "Principal",
-};
 
 export function exportToJSON(
   competencies: Competency[],
@@ -39,11 +27,7 @@ export function exportToJSON(
           .sort((a, b) => a.orderIndex - b.orderIndex)
           .map((sub) => ({
             title: sub.title,
-            associate_level: sub.associateLevel || [],
-            intermediate_level: sub.intermediateLevel || [],
-            senior_level: sub.seniorLevel || [],
-            lead_level: sub.leadLevel || [],
-            principal_level: sub.principalLevel || [],
+            level_criteria: sub.levelCriteria || {},
           })),
       })),
   };
@@ -52,9 +36,11 @@ export function exportToJSON(
 
 export function exportToMarkdown(
   competencies: Competency[],
-  subCompetencies: SubCompetency[]
+  subCompetencies: SubCompetency[],
+  levels?: RoleLevel[]
 ): string {
   const lines: string[] = [];
+  const levelOptions = getLevelOptions(levels || FALLBACK_LEVELS);
 
   competencies
     .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -74,19 +60,11 @@ export function exportToMarkdown(
         lines.push(`## ${compIndex + 1}.${subIndex + 1} ${sub.title}`);
         lines.push("");
 
-        LEVELS.forEach((level) => {
-          const levelKeyMap: Record<string, keyof SubCompetency> = {
-            associate: "associateLevel",
-            intermediate: "intermediateLevel",
-            senior: "seniorLevel",
-            lead: "leadLevel",
-            principal: "principalLevel",
-          };
-          const levelKey = levelKeyMap[level];
-          const criteria = (sub[levelKey] as string[]) || [];
-          
+        levelOptions.forEach(({ key, label }) => {
+          const criteria = getCriteriaForLevelWithFallback(sub, key);
+
           if (criteria.length > 0) {
-            lines.push(`### ${LEVEL_LABELS[level]}`);
+            lines.push(`### ${label}`);
             criteria.forEach((c) => {
               lines.push(`- ${c}`);
             });
@@ -109,18 +87,85 @@ export function detectFormat(content: string): "json" | "markdown" {
 
 export function parseJSON(content: string): CompetencyExportData {
   const parsed = JSON.parse(content);
-  
+
   if (!parsed.competencies || !Array.isArray(parsed.competencies)) {
     throw new Error("Invalid JSON format: missing 'competencies' array");
   }
 
+  // Normalize: accept both level_criteria and legacy 5-field format
+  parsed.competencies.forEach((comp: any) => {
+    if (comp.subCompetencies) {
+      comp.subCompetencies.forEach((sub: any) => {
+        if (!sub.level_criteria || typeof sub.level_criteria !== "object") {
+          // Build level_criteria from legacy fields if present
+          const lc: Record<string, string[]> = {};
+          if (sub.associate_level?.length) lc.associate = sub.associate_level;
+          if (sub.intermediate_level?.length) lc.intermediate = sub.intermediate_level;
+          if (sub.senior_level?.length) lc.senior = sub.senior_level;
+          if (sub.lead_level?.length) lc.lead = sub.lead_level;
+          if (sub.principal_level?.length) lc.principal = sub.principal_level;
+          sub.level_criteria = lc;
+        }
+      });
+    }
+  });
+
   return parsed as CompetencyExportData;
+}
+
+/** Build a lookup from all recognized level names/shortcuts to their keys */
+function buildLevelLookup(): Map<string, string> {
+  const map = new Map<string, string>();
+  const allLevels = [...IC_LEVELS, ...MANAGEMENT_LEVELS];
+
+  for (const level of allLevels) {
+    // Exact label match: "P1 Entry" → "p1_entry"
+    map.set(level.label.toLowerCase(), level.key);
+    // Exact key match: "p1_entry" → "p1_entry"
+    map.set(level.key, level.key);
+    // Short code: "p1" → "p1_entry", "m1" → "m1_team_lead"
+    const shortCode = level.key.split("_")[0];
+    if (!map.has(shortCode)) {
+      map.set(shortCode, level.key);
+    }
+  }
+
+  // Legacy names for old-format markdown
+  const legacyMap: Record<string, string> = {
+    associate: "p1_entry",
+    intermediate: "p2_developing",
+    senior: "p3_career",
+    lead: "p4_advanced",
+    principal: "p5_principal",
+  };
+  for (const [name, key] of Object.entries(legacyMap)) {
+    map.set(name, key);
+  }
+
+  return map;
+}
+
+const LEVEL_LOOKUP = buildLevelLookup();
+
+function resolveMarkdownLevelKey(headerText: string): string {
+  const lower = headerText.toLowerCase().trim();
+
+  // Try exact match first
+  if (LEVEL_LOOKUP.has(lower)) return LEVEL_LOOKUP.get(lower)!;
+
+  // Try partial match (e.g., "Associate Designer" still matches "associate")
+  for (const [name, key] of LEVEL_LOOKUP.entries()) {
+    if (lower.includes(name) || name.includes(lower)) return key;
+  }
+
+  // Fallback: convert to snake_case
+  return lower.replace(/\s+/g, "_");
 }
 
 export function parseMarkdown(content: string): CompetencyExportData {
   const lines = content.split("\n");
   const competencies: CompetencyExportData["competencies"] = [];
-  
+
   let currentCompetency: CompetencyExportData["competencies"][0] | null = null;
   let currentSubCompetency: CompetencyExportData["competencies"][0]["subCompetencies"][0] | null = null;
   let currentLevel: string | null = null;
@@ -129,7 +174,7 @@ export function parseMarkdown(content: string): CompetencyExportData {
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-    
+
     // Match # 1. Title or # Title
     const h1Match = trimmedLine.match(/^#\s+(?:\d+\.\s*)?(.+)$/);
     if (h1Match) {
@@ -143,7 +188,7 @@ export function parseMarkdown(content: string): CompetencyExportData {
         }
         competencies.push(currentCompetency);
       }
-      
+
       currentCompetency = {
         title: h1Match[1].trim(),
         description: null,
@@ -164,19 +209,15 @@ export function parseMarkdown(content: string): CompetencyExportData {
         currentCompetency.description = descriptionLines.join("\n").trim();
       }
       collectingDescription = false;
-      
+
       // Save previous sub-competency
       if (currentSubCompetency) {
         currentCompetency.subCompetencies.push(currentSubCompetency);
       }
-      
+
       currentSubCompetency = {
         title: h2Match[1].trim(),
-        associate_level: [],
-        intermediate_level: [],
-        senior_level: [],
-        lead_level: [],
-        principal_level: [],
+        level_criteria: {},
       };
       currentLevel = null;
       continue;
@@ -186,23 +227,23 @@ export function parseMarkdown(content: string): CompetencyExportData {
     const h3Match = trimmedLine.match(/^###\s+(.+)$/);
     if (h3Match && currentSubCompetency) {
       collectingDescription = false;
-      const levelName = h3Match[1].toLowerCase().trim();
-      
-      if (levelName.includes("associate")) currentLevel = "associate";
-      else if (levelName.includes("intermediate")) currentLevel = "intermediate";
-      else if (levelName.includes("senior")) currentLevel = "senior";
-      else if (levelName.includes("lead")) currentLevel = "lead";
-      else if (levelName.includes("principal")) currentLevel = "principal";
-      else currentLevel = null;
-      
+      const levelName = h3Match[1].trim();
+      currentLevel = resolveMarkdownLevelKey(levelName);
+
+      if (currentLevel && !currentSubCompetency.level_criteria[currentLevel]) {
+        currentSubCompetency.level_criteria[currentLevel] = [];
+      }
+
       continue;
     }
 
     // Match bullet points
     const bulletMatch = trimmedLine.match(/^[-*]\s+(.+)$/);
     if (bulletMatch && currentSubCompetency && currentLevel) {
-      const levelKey = `${currentLevel}_level` as keyof typeof currentSubCompetency;
-      (currentSubCompetency[levelKey] as string[]).push(bulletMatch[1].trim());
+      if (!currentSubCompetency.level_criteria[currentLevel]) {
+        currentSubCompetency.level_criteria[currentLevel] = [];
+      }
+      currentSubCompetency.level_criteria[currentLevel].push(bulletMatch[1].trim());
       continue;
     }
 
@@ -232,7 +273,7 @@ export function parseMarkdown(content: string): CompetencyExportData {
 
 export function parseContent(content: string): CompetencyExportData {
   const format = detectFormat(content);
-  
+
   if (format === "json") {
     return parseJSON(content);
   }

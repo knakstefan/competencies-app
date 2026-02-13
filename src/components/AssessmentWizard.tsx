@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { useConvex } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -10,11 +10,28 @@ import { Progress } from "@/components/ui/progress";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronLeft, ChevronRight, Check, ArrowUp, ArrowDown } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Check, ArrowUp, ArrowDown, Sparkles, ChevronDown } from "lucide-react";
 import { AssessmentSummary } from "./AssessmentSummary";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import {
+  RoleLevel,
+  FALLBACK_LEVELS,
+  getLevelBelow as sharedGetLevelBelow,
+  getLevelAbove as sharedGetLevelAbove,
+  getLevelNBelow as sharedGetLevelNBelow,
+  getLevelNAbove as sharedGetLevelNAbove,
+  getCriteriaForLevelWithFallback,
+  getLevelOptions,
+  labelToKey,
+} from "@/lib/levelUtils";
+
+interface GeneratedPrompt {
+  subCompetencyId: string;
+  prompts: Array<{ question: string; lookFor: string }>;
+}
 
 interface AssessmentWizardProps {
   open: boolean;
@@ -24,6 +41,8 @@ interface AssessmentWizardProps {
   competencies: Competency[];
   subCompetencies: SubCompetency[];
   existingAssessmentId?: string | null;
+  levels?: RoleLevel[];
+  roleId?: string;
 }
 
 export const AssessmentWizard = ({
@@ -34,6 +53,8 @@ export const AssessmentWizard = ({
   competencies,
   subCompetencies,
   existingAssessmentId = null,
+  levels = FALLBACK_LEVELS,
+  roleId,
 }: AssessmentWizardProps) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [assessmentId, setAssessmentId] = useState<Id<"assessments"> | null>(null);
@@ -42,6 +63,8 @@ export const AssessmentWizard = ({
   >({});
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(false);
+  const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPrompt[]>([]);
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const { toast } = useToast();
 
   const client = useConvex();
@@ -49,6 +72,7 @@ export const AssessmentWizard = ({
   const upsertProgress = useMutation(api.progress.upsert);
   const replaceEvals = useMutation(api.evaluations.replaceForProgress);
   const completeAssessment = useMutation(api.assessments.complete);
+  const generateAssessmentPrompts = useAction(api.ai.generateAssessmentPrompts);
 
   const orderedSubCompetencies = [...subCompetencies].sort((a, b) => {
     const compA = competencies.find((c) => c._id === a.competencyId);
@@ -81,6 +105,8 @@ export const AssessmentWizard = ({
       setCurrentStep(0);
       setAssessmentId(null);
       setAssessmentData({});
+      setGeneratedPrompts([]);
+      setGeneratingPrompts(false);
     }
   }, [open, existingAssessmentId]);
 
@@ -95,6 +121,9 @@ export const AssessmentWizard = ({
 
       // Load previous assessment data as starting point
       await loadPreviousAssessmentData(newId);
+
+      // Generate AI assessment prompts in the background
+      generateAndStorePrompts(newId);
     } catch (error) {
       console.error("Error creating assessment:", error);
       toast({
@@ -104,6 +133,23 @@ export const AssessmentWizard = ({
       });
     } finally {
       setInitializing(false);
+    }
+  };
+
+  const generateAndStorePrompts = async (assessId: Id<"assessments">) => {
+    setGeneratingPrompts(true);
+    try {
+      const prompts = await generateAssessmentPrompts({
+        memberId: memberId as Id<"teamMembers">,
+        assessmentId: assessId,
+        roleId: roleId ? (roleId as Id<"roles">) : undefined,
+      });
+      setGeneratedPrompts(prompts);
+    } catch (error) {
+      console.error("Failed to generate AI assessment prompts:", error);
+      // Gracefully degrade — assessment works without prompts
+    } finally {
+      setGeneratingPrompts(false);
     }
   };
 
@@ -215,6 +261,12 @@ export const AssessmentWizard = ({
   const loadExistingAssessment = async (id: Id<"assessments">) => {
     setInitializing(true);
     try {
+      // Fetch the assessment record (for stored prompts)
+      const assessment = await client.query(api.assessments.getById, { id });
+      if (assessment?.generatedPrompts) {
+        setGeneratedPrompts(assessment.generatedPrompts);
+      }
+
       // Fetch existing progress for this assessment
       const progressData = await client.query(
         api.progress.listForAssessment,
@@ -398,81 +450,28 @@ export const AssessmentWizard = ({
     ? competencies.find((c) => c._id === currentSubCompetency.competencyId)
     : null;
 
-  const getLevelBelow = (level: string): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    return index > 0 ? levels[index - 1] : null;
-  };
+  const getLevelBelow = (level: string): string | null => sharedGetLevelBelow(levels, level);
+  const getLevelAbove = (level: string): string | null => sharedGetLevelAbove(levels, level);
+  const getLevelNBelow = (level: string, n: number): string | null => sharedGetLevelNBelow(levels, level, n);
+  const getLevelNAbove = (level: string, n: number): string | null => sharedGetLevelNAbove(levels, level, n);
 
-  const getLevelAbove = (level: string): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    return index < levels.length - 1 ? levels[index + 1] : null;
-  };
-
-  // Get level N steps below (e.g., n=2 for well_below)
-  const getLevelNBelow = (level: string, n: number): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    const targetIndex = index - n;
-    // Return the target level if it exists, otherwise the lowest available
-    if (targetIndex >= 0) {
-      return levels[targetIndex];
-    } else if (index > 0) {
-      // Return the lowest level if we can go at least one step down
-      return levels[0];
-    }
-    return null;
-  };
-
-  // Get level N steps above (e.g., n=2 for well_above)
-  const getLevelNAbove = (level: string, n: number): string | null => {
-    const levels = ["associate", "intermediate", "senior", "lead", "principal"];
-    const index = levels.indexOf(level);
-    const targetIndex = index + n;
-    // Return the target level if it exists, otherwise the highest available
-    if (targetIndex < levels.length) {
-      return levels[targetIndex];
-    } else if (index < levels.length - 1) {
-      // Return the highest level if we can go at least one step up
-      return levels[levels.length - 1];
-    }
-    return null;
-  };
-
-  // Determine the display level based on evaluation
   const getDisplayLevel = (evaluation: string, baseLevel: string): string | null => {
     switch (evaluation) {
-      case "well_below":
-        return getLevelNBelow(baseLevel, 2); // 2 levels below
-      case "below":
-        return getLevelNBelow(baseLevel, 1); // 1 level below
-      case "above":
-        return getLevelNAbove(baseLevel, 1); // 1 level above
-      case "well_above":
-        return getLevelNAbove(baseLevel, 2); // 2 levels above
-      default:
-        return null; // At target - no change
+      case "well_below": return getLevelNBelow(baseLevel, 2);
+      case "below": return getLevelNBelow(baseLevel, 1);
+      case "above": return getLevelNAbove(baseLevel, 1);
+      case "well_above": return getLevelNAbove(baseLevel, 2);
+      default: return null;
     }
-  };
-
-  const levelToCamelCase: Record<string, string> = {
-    associate: "associateLevel",
-    intermediate: "intermediateLevel",
-    senior: "seniorLevel",
-    lead: "leadLevel",
-    principal: "principalLevel",
   };
 
   const getCriteriaForLevel = (sub: SubCompetency, level: string): string[] => {
-    const levelKey = levelToCamelCase[level] as keyof SubCompetency;
-    if (!levelKey) return [];
-    const criteria = sub[levelKey];
-    return Array.isArray(criteria) ? criteria : [];
+    return getCriteriaForLevelWithFallback(sub, level);
   };
 
+  const memberLevelKey = labelToKey(levels, memberRole);
   const currentData = currentSubCompetency ? assessmentData[currentSubCompetency._id] : null;
-  const currentLevel = currentData?.level || memberRole.toLowerCase();
+  const currentLevel = currentData?.level || memberLevelKey;
   const currentCriteria = currentSubCompetency ? getCriteriaForLevel(currentSubCompetency, currentLevel) : [];
 
   const handleLevelChange = (level: string) => {
@@ -483,14 +482,14 @@ export const AssessmentWizard = ({
   const handleNotesChange = (notes: string) => {
     if (!currentSubCompetency) return;
     // Make sure we have a level set before saving
-    const level = currentData?.level || memberRole.toLowerCase();
+    const level = currentData?.level || memberLevelKey;
     saveProgress(currentSubCompetency._id, level, notes, currentData?.evaluations);
   };
 
   const handleEvaluationChange = (criterion: string, evaluation: string) => {
     if (!currentSubCompetency) return;
     // Make sure we have a level set before saving
-    const level = currentData?.level || memberRole.toLowerCase();
+    const level = currentData?.level || memberLevelKey;
     const newEvaluations = { ...(currentData?.evaluations || {}), [criterion]: evaluation };
     saveProgress(currentSubCompetency._id, level, currentData?.notes, newEvaluations);
   };
@@ -533,6 +532,50 @@ export const AssessmentWizard = ({
                   </Card>
                 )}
 
+                {/* AI Discussion Prompts */}
+                {(() => {
+                  const currentPrompts = generatedPrompts.find(
+                    (p) => p.subCompetencyId === currentSubCompetency._id
+                  );
+                  if (generatingPrompts) {
+                    return (
+                      <Card className="border-primary/20 bg-primary/5">
+                        <CardContent className="pt-6">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Sparkles className="h-4 w-4 text-primary" />
+                            <span>Generating AI discussion prompts...</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  }
+                  if (currentPrompts && currentPrompts.prompts.length > 0) {
+                    return (
+                      <Collapsible defaultOpen>
+                        <Card className="border-primary/20">
+                          <CardContent className="pt-4 pb-4">
+                            <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
+                              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                              <span className="text-sm font-medium flex-1">AI Discussion Prompts</span>
+                              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent className="mt-3 space-y-3">
+                              {currentPrompts.prompts.map((prompt, i) => (
+                                <div key={i} className="pl-6 space-y-1">
+                                  <p className="text-sm font-medium">{prompt.question}</p>
+                                  <p className="text-xs text-muted-foreground">{prompt.lookFor}</p>
+                                </div>
+                              ))}
+                            </CollapsibleContent>
+                          </CardContent>
+                        </Card>
+                      </Collapsible>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <Card>
                   <CardContent className="pt-6 space-y-4">
                     <div className="space-y-2 hidden">
@@ -542,11 +585,9 @@ export const AssessmentWizard = ({
                         onChange={(e) => handleLevelChange(e.target.value)}
                         className="w-full p-2 rounded-md border"
                       >
-                        <option value="associate">Associate</option>
-                        <option value="intermediate">Intermediate</option>
-                        <option value="senior">Senior</option>
-                        <option value="lead">Lead</option>
-                        <option value="principal">Principal</option>
+                        {getLevelOptions(levels).map((l) => (
+                          <option key={l.key} value={l.key}>{l.label}</option>
+                        ))}
                       </select>
                     </div>
 

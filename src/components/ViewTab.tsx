@@ -1,27 +1,22 @@
 import { useState } from "react";
 import { CompetencyCard } from "@/components/CompetencyCard";
 import { CompetencyCardSkeleton } from "@/components/skeletons/CompetencyCardSkeleton";
-import { LevelFilter, Level } from "@/components/LevelFilter";
+import { LevelFilter } from "@/components/LevelFilter";
 import { Competency, SubCompetency } from "@/types/competency";
+import { RoleLevel, FALLBACK_LEVELS, getCriteriaForLevelWithFallback } from "@/lib/levelUtils";
 
 interface ViewTabProps {
   competencies: Competency[];
   subCompetencies: SubCompetency[];
   loading?: boolean;
+  levels?: RoleLevel[];
 }
 
-export const ViewTab = ({ competencies, subCompetencies, loading = false }: ViewTabProps) => {
-  const [selectedLevel, setSelectedLevel] = useState<Level>("associate");
+export const ViewTab = ({ competencies, subCompetencies, loading = false, levels = FALLBACK_LEVELS }: ViewTabProps) => {
+  const [selectedLevel, setSelectedLevel] = useState<string>(levels[0]?.key || "associate");
 
   const getLevelDescription = (sub: SubCompetency) => {
-    const levelMap = {
-      associate: sub.associateLevel,
-      intermediate: sub.intermediateLevel,
-      senior: sub.seniorLevel,
-      lead: sub.leadLevel,
-      principal: sub.principalLevel,
-    };
-    const criteria = levelMap[selectedLevel] || [];
+    const criteria = getCriteriaForLevelWithFallback(sub, selectedLevel);
     return criteria.length > 0 ? criteria.join("\n• ") : "";
   };
 
@@ -37,10 +32,10 @@ export const ViewTab = ({ competencies, subCompetencies, loading = false }: View
 
   return (
     <div className="space-y-6">
-      <div className="max-w-4xl mx-auto">
+      <div>
         <div className="mb-6">
           <h2 className="text-lg font-semibold mb-3 text-foreground hidden">Select Designer Level</h2>
-          <LevelFilter currentLevel={selectedLevel} onLevelChange={setSelectedLevel} />
+          <LevelFilter currentLevel={selectedLevel} onLevelChange={setSelectedLevel} levels={levels} />
         </div>
 
         {loading ? (

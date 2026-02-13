@@ -22,12 +22,20 @@ export const createDraft = mutation({
   args: {
     candidateId: v.id("hiringCandidates"),
     stage: v.string(),
+    stageId: v.optional(v.id("hiringStages")),
+    generatedQuestions: v.optional(v.array(v.object({
+      category: v.string(),
+      question: v.string(),
+      signal: v.string(),
+    }))),
     createdBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     return await ctx.db.insert("candidateAssessments", {
       candidateId: args.candidateId,
       stage: args.stage,
+      stageId: args.stageId,
+      generatedQuestions: args.generatedQuestions,
       status: "draft",
       createdBy: args.createdBy,
       updatedAt: new Date().toISOString(),
@@ -90,5 +98,22 @@ export const remove = mutation({
     }
 
     await ctx.db.delete(args.id);
+  },
+});
+
+export const updateGeneratedQuestions = mutation({
+  args: {
+    id: v.id("candidateAssessments"),
+    generatedQuestions: v.array(v.object({
+      category: v.string(),
+      question: v.string(),
+      signal: v.string(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      generatedQuestions: args.generatedQuestions,
+      updatedAt: new Date().toISOString(),
+    });
   },
 });

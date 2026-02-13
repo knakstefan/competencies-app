@@ -1,6 +1,13 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
+export const getById = query({
+  args: { id: v.id("assessments") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
 export const listForMember = query({
   args: { memberId: v.id("teamMembers") },
   handler: async (ctx, args) => {
@@ -69,6 +76,25 @@ export const complete = mutation({
       status: "completed",
       completedAt: new Date().toISOString(),
       overallScore: args.overallScore,
+      updatedAt: new Date().toISOString(),
+    });
+  },
+});
+
+export const updateGeneratedPrompts = mutation({
+  args: {
+    id: v.id("assessments"),
+    generatedPrompts: v.array(v.object({
+      subCompetencyId: v.string(),
+      prompts: v.array(v.object({
+        question: v.string(),
+        lookFor: v.string(),
+      })),
+    })),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      generatedPrompts: args.generatedPrompts,
       updatedAt: new Date().toISOString(),
     });
   },

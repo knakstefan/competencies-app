@@ -11,25 +11,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useState } from "react";
-
-const INTERVIEW_STAGES = [
-  { id: "manager_interview", label: "Manager Interview" },
-  { id: "portfolio_review", label: "Portfolio Review" },
-  { id: "team_interview", label: "Team Interview" },
-];
-
-const TERMINAL_STAGES = [
-  { id: "hired", label: "Hired" },
-  { id: "rejected", label: "Rejected" },
-];
-
-const ALL_STAGES = [...INTERVIEW_STAGES, ...TERMINAL_STAGES];
+import { HiringStage } from "./HiringManagement";
+import { isTerminalStage, getStageLabel, getStageIndex } from "@/lib/stageUtils";
 
 interface StageProgressIndicatorProps {
   currentStage: string;
   isAdmin: boolean;
   onStageChange?: (newStage: string) => Promise<void>;
   stageScores?: Record<string, number>;
+  stages: HiringStage[];
 }
 
 export const StageProgressIndicator = ({
@@ -37,12 +27,13 @@ export const StageProgressIndicator = ({
   isAdmin,
   onStageChange,
   stageScores = {},
+  stages,
 }: StageProgressIndicatorProps) => {
   const [pendingStage, setPendingStage] = useState<string | null>(null);
   const [isChanging, setIsChanging] = useState(false);
 
-  const isTerminal = currentStage === "hired" || currentStage === "rejected";
-  const interviewIndex = INTERVIEW_STAGES.findIndex((s) => s.id === currentStage);
+  const isTerminal = isTerminalStage(currentStage);
+  const currentIndex = getStageIndex(currentStage, stages);
 
   const handleStageClick = (stageId: string) => {
     if (!isAdmin || !onStageChange || stageId === currentStage) return;
@@ -60,21 +51,28 @@ export const StageProgressIndicator = ({
     }
   };
 
+  // All stages + terminal for label resolution
+  const allItems = [
+    ...stages.map((s) => ({ id: s._id, label: s.title })),
+    { id: "hired", label: "Hired" },
+    { id: "rejected", label: "Rejected" },
+  ];
+
   return (
     <>
       <div className="flex items-center justify-center gap-2 py-4 flex-wrap">
-        {INTERVIEW_STAGES.map((stage, index) => {
-          const isCompleted = isTerminal || index < interviewIndex;
-          const isCurrent = !isTerminal && index === interviewIndex;
-          const isPending = stage.id === pendingStage;
-          const score = stageScores[stage.id];
+        {stages.map((stage, index) => {
+          const isCompleted = isTerminal || index < currentIndex;
+          const isCurrent = !isTerminal && index === currentIndex;
+          const isPending = stage._id === pendingStage;
+          const score = stageScores[stage._id] || stageScores[stage.title.toLowerCase().replace(/\s+/g, "_")];
           const hasScore = score != null;
           const hasNoAssessment = isCurrent && !hasScore;
 
           return (
-            <div key={stage.id} className="flex items-center gap-2">
+            <div key={stage._id} className="flex items-center gap-2">
               <button
-                onClick={() => handleStageClick(stage.id)}
+                onClick={() => handleStageClick(stage._id)}
                 disabled={!isAdmin || isChanging}
                 className={cn(
                   "relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all",
@@ -94,8 +92,8 @@ export const StageProgressIndicator = ({
                     {index + 1}
                   </span>
                 )}
-                <span className="hidden sm:inline">{stage.label}</span>
-                <span className="sm:hidden">{stage.label.split(" ")[0]}</span>
+                <span className="hidden sm:inline">{stage.title}</span>
+                <span className="sm:hidden">{stage.title.split(" ")[0]}</span>
                 {hasScore && (
                   <span className={cn(
                     "ml-1 text-xs font-semibold",
@@ -107,7 +105,7 @@ export const StageProgressIndicator = ({
                 )}
               </button>
 
-              {index < INTERVIEW_STAGES.length - 1 && (
+              {index < stages.length - 1 && (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
             </div>
@@ -151,7 +149,7 @@ export const StageProgressIndicator = ({
             <AlertDialogDescription>
               Are you sure you want to move this candidate to{" "}
               <strong>
-                {ALL_STAGES.find((s) => s.id === pendingStage)?.label}
+                {allItems.find((s) => s.id === pendingStage)?.label || pendingStage}
               </strong>
               ? This will update their position in the hiring pipeline.
             </AlertDialogDescription>

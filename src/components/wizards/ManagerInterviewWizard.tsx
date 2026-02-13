@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { useMutation, useConvex } from "convex/react";
+import { useMutation, useConvex, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
@@ -22,8 +22,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ChevronLeft, ChevronRight, Check } from "lucide-react";
-import { HiringCandidate } from "../HiringManagement";
+import { ChevronLeft, ChevronRight, Check, Sparkles, Loader2 } from "lucide-react";
+import { HiringCandidate, HiringStage } from "../HiringManagement";
 import {
   getInterviewQuestionsForRole,
   getInterviewCategories,
@@ -38,6 +38,7 @@ interface ManagerInterviewWizardProps {
   onClose: () => void;
   candidate: HiringCandidate;
   existingAssessmentId?: string | null;
+  stage?: HiringStage;
 }
 
 interface Response {
@@ -51,13 +52,19 @@ export const ManagerInterviewWizard = ({
   onClose,
   candidate,
   existingAssessmentId,
+  stage,
 }: ManagerInterviewWizardProps) => {
-  const INTERVIEW_QUESTIONS = getInterviewQuestionsForRole(candidate.targetRole);
+  // Question source: AI-generated or hardcoded fallback
+  const [aiQuestions, setAiQuestions] = useState<InterviewQuestion[] | null>(null);
+  const [generatingQuestions, setGeneratingQuestions] = useState(false);
+
+  const FALLBACK_QUESTIONS = getInterviewQuestionsForRole(candidate.targetRole);
+
+  // Use AI questions if available, otherwise fallback
+  const INTERVIEW_QUESTIONS = aiQuestions || FALLBACK_QUESTIONS;
   const categories = getInterviewCategories(INTERVIEW_QUESTIONS);
 
-  // Build display order: group original indices by category so Next/Back
-  // flows sequentially through each category instead of jumping.
-  // Responses are still keyed by original index for DB compatibility.
+  // Build display order: group original indices by category
   const displayOrder = useMemo(() => {
     const order: number[] = [];
     for (const cat of categories) {
@@ -92,11 +99,20 @@ export const ManagerInterviewWizard = ({
   const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
   const completeMutation = useMutation(api.candidateAssessments.complete);
   const upsertResponse = useMutation(api.interviewResponses.upsert);
+  const updateGeneratedQuestions = useMutation(api.candidateAssessments.updateGeneratedQuestions);
+  const generateInterviewQuestions = useAction(api.ai.generateInterviewQuestions);
 
   const isSummaryStep = currentStep === INTERVIEW_QUESTIONS.length;
 
   // Current original question index (only valid when not on summary)
   const origIdx = isSummaryStep ? -1 : displayOrder[currentStep];
+
+  // Determine the stage string and stageId for createDraft
+  const stageString = stage ? stage._id : "manager_interview";
+  const stageIdForDraft = stage ? (stage._id as Id<"hiringStages">) : undefined;
+
+  // Determine the dialog title
+  const dialogTitle = stage ? stage.title : "Manager Interview";
 
   useEffect(() => {
     if (open) {
@@ -111,6 +127,8 @@ export const ManagerInterviewWizard = ({
       setAssessmentId(null);
       setOverallImpression("");
       setHoveredRating(null);
+      setAiQuestions(null);
+      setGeneratingQuestions(false);
     }
   }, [open, existingAssessmentId]);
 
@@ -119,9 +137,16 @@ export const ManagerInterviewWizard = ({
     try {
       const id = await createDraftMutation({
         candidateId: candidate._id as Id<"hiringCandidates">,
-        stage: "manager_interview",
+        stage: stageString,
+        stageId: stageIdForDraft,
       });
       setAssessmentId(id);
+
+      // Generate AI interview questions for this stage
+      if (stage && candidate.roleId) {
+        await generateAndStoreQuestions(id, stage);
+      }
+
       setInitializing(false);
     } catch {
       toast({
@@ -130,6 +155,35 @@ export const ManagerInterviewWizard = ({
         variant: "destructive",
       });
       onClose();
+    }
+  };
+
+  const generateAndStoreQuestions = async (assessId: string, stageData: HiringStage) => {
+    setGeneratingQuestions(true);
+    try {
+      const questions = await generateInterviewQuestions({
+        stageId: stageData._id as Id<"hiringStages">,
+        candidateId: candidate._id as Id<"hiringCandidates">,
+        roleId: stageData.roleId as Id<"roles">,
+      });
+
+      // Store on the assessment record
+      await updateGeneratedQuestions({
+        id: assessId as Id<"candidateAssessments">,
+        generatedQuestions: questions,
+      });
+
+      setAiQuestions(questions);
+    } catch (error) {
+      console.error("Failed to generate AI questions:", error);
+      toast({
+        title: "AI generation failed",
+        description: "Using default interview questions instead.",
+        variant: "destructive",
+      });
+      // Fallback to hardcoded questions — aiQuestions stays null
+    } finally {
+      setGeneratingQuestions(false);
     }
   };
 
@@ -146,6 +200,11 @@ export const ManagerInterviewWizard = ({
           id: id as Id<"candidateAssessments">,
         }),
       ]);
+
+      // Load stored AI questions if available
+      if (assessment?.generatedQuestions && assessment.generatedQuestions.length > 0) {
+        setAiQuestions(assessment.generatedQuestions as InterviewQuestion[]);
+      }
 
       const responseMap: Record<number, Response> = {};
       (data || []).forEach((r: any) => {
@@ -337,7 +396,7 @@ export const ManagerInterviewWizard = ({
   }, [flushSave]);
 
   // Default new questions to "target" rating
-  if (!isSummaryStep && !responses[origIdx]) {
+  if (!isSummaryStep && !generatingQuestions && INTERVIEW_QUESTIONS.length > 0 && origIdx >= 0 && !responses[origIdx]) {
     setResponses((prev) => ({
       ...prev,
       [origIdx]: {
@@ -368,7 +427,6 @@ export const ManagerInterviewWizard = ({
     : currentQuestion?.category ?? "";
 
   // Build nav rail data in display order.
-  // Nav rail indices = display steps. Responses re-keyed by display step.
   const navQuestions = displayOrder.map((oIdx) => ({
     category: INTERVIEW_QUESTIONS[oIdx].category,
   }));
@@ -388,7 +446,6 @@ export const ManagerInterviewWizard = ({
       label: q.question.length > 80 ? q.question.slice(0, 77) + "..." : q.question,
     };
   });
-  // Summary responses also re-keyed by display step
   const summaryResponses: Record<number, { rating: string | null; notes: string | null }> = {};
   displayOrder.forEach((oIdx, displayIdx) => {
     const r = responses[oIdx];
@@ -408,17 +465,27 @@ export const ManagerInterviewWizard = ({
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>
-                  Manager Interview — {candidate.name}
-                </span>
-                <span className="text-xs font-normal text-muted-foreground">
-                  {currentCategory}
+                  {dialogTitle} — {candidate.name}
                 </span>
               </DialogTitle>
             </DialogHeader>
 
-            {initializing ? (
-              <div className="py-8 text-center text-muted-foreground">
-                Loading...
+            {initializing || generatingQuestions ? (
+              <div className="py-12 text-center text-muted-foreground space-y-3">
+                {generatingQuestions ? (
+                  <>
+                    <div className="flex items-center justify-center gap-2">
+                      <Sparkles className="h-5 w-5 text-primary animate-pulse" />
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    </div>
+                    <p className="text-sm">Generating interview questions...</p>
+                    <p className="text-xs text-muted-foreground/60">
+                      AI is crafting questions tailored to this stage and the candidate's target level.
+                    </p>
+                  </>
+                ) : (
+                  <p>Loading...</p>
+                )}
               </div>
             ) : (
               <div className="space-y-6">

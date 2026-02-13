@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ShieldCheck,
 } from "lucide-react";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
+import { buildLevelBaseScores, labelToKey } from "@/lib/levelUtils";
 
 interface SubCompetencyScore {
   subCompetencyId: string;
@@ -29,14 +31,6 @@ interface CompetencyScore {
   memberCount: number;
   subScores: SubCompetencyScore[];
 }
-
-const LEVEL_BASE_SCORES: Record<string, number> = {
-  associate: 2,
-  intermediate: 4,
-  senior: 6,
-  lead: 8,
-  principal: 10,
-};
 
 const EVALUATION_MODIFIERS: Record<string, number> = {
   well_below: -2,
@@ -70,6 +64,8 @@ interface SkillsRecommendationProps {
 }
 
 export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {}) => {
+  const { levels } = useRoleLevels(roleId);
+  const LEVEL_BASE_SCORES = buildLevelBaseScores(levels);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showStrengths, setShowStrengths] = useState(false);
 
@@ -154,7 +150,8 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
   // Determine max possible score from team composition
   const maxPossibleScore = Math.max(
     ...members.map((m: any) => {
-      const base = LEVEL_BASE_SCORES[m.role.toLowerCase()] || 4;
+      const key = labelToKey(levels, m.role);
+      const base = LEVEL_BASE_SCORES[key] || 4;
       return base + 4;
     }),
     6
@@ -182,8 +179,8 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
 
       if (memberProgress.length === 0) return;
 
-      const memberLevel = member.role.toLowerCase();
-      const baseScore = LEVEL_BASE_SCORES[memberLevel] || 4;
+      const memberKey = labelToKey(levels, member.role);
+      const baseScore = LEVEL_BASE_SCORES[memberKey] || 4;
 
       let totalModifier = 0;
       let evalCount = 0;

@@ -18,6 +18,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { HiringStage } from "./HiringManagement";
+import { getStageLabel } from "@/lib/stageUtils";
 
 interface CandidateAssessmentListProps {
   candidateId: string;
@@ -25,16 +27,8 @@ interface CandidateAssessmentListProps {
   isAdmin: boolean;
   onCreateAssessment: () => void;
   onEditAssessment: (assessmentId: string) => void;
+  stages?: HiringStage[];
 }
-
-const formatStageName = (stage: string) => {
-  const stageNames: Record<string, string> = {
-    manager_interview: "Manager Interview",
-    portfolio_review: "Portfolio Review",
-    team_interview: "Team Interview",
-  };
-  return stageNames[stage] || stage;
-};
 
 export const CandidateAssessmentList = ({
   candidateId,
@@ -42,6 +36,7 @@ export const CandidateAssessmentList = ({
   isAdmin,
   onCreateAssessment,
   onEditAssessment,
+  stages = [],
 }: CandidateAssessmentListProps) => {
   const assessments = useQuery(api.candidateAssessments.listForCandidate, {
     candidateId: candidateId as Id<"hiringCandidates">,
@@ -84,6 +79,16 @@ export const CandidateAssessmentList = ({
     });
   };
 
+  const formatStageName = (assessment: any) => {
+    // If assessment has a stageId, look up from stages
+    if (assessment.stageId) {
+      const stage = stages.find((s) => s._id === assessment.stageId);
+      if (stage) return stage.title;
+    }
+    // DB lookup by legacy stage string
+    return getStageLabel(assessment.stage, stages);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center py-8">
@@ -112,7 +117,7 @@ export const CandidateAssessmentList = ({
       ) : (
         <div className="space-y-3">
           {sortedAssessments.map((assessment) => {
-            const isEditable = assessment.stage === currentStage;
+            const isEditable = assessment.stage === currentStage || assessment.stageId === currentStage;
             return (
               <Card
                 key={assessment._id}
@@ -127,7 +132,7 @@ export const CandidateAssessmentList = ({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">
-                          {formatStageName(assessment.stage)} Assessment
+                          {formatStageName(assessment)} Assessment
                         </span>
                         <Badge
                           variant={assessment.status === "completed" ? "default" : "secondary"}

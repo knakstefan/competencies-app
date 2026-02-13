@@ -165,19 +165,26 @@ export const generatePromotionPlan = action({
       };
     });
 
+    // Derive role level keys from role type
+    const IC_LEVEL_KEYS = ["p1_entry", "p2_developing", "p3_career", "p4_advanced", "p5_principal"];
+    const MANAGEMENT_LEVEL_KEYS = ["m1_team_lead", "m2_manager", "m3_director", "m4_senior_director"];
+    let roleLevelKeys = IC_LEVEL_KEYS;
+    if (args.roleId) {
+      const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
+      if (role?.type === "management") {
+        roleLevelKeys = MANAGEMENT_LEVEL_KEYS;
+      }
+    }
+
     // Calculate role progression path
-    const roles = [
-      "associate",
-      "intermediate",
-      "senior",
-      "lead",
-      "principal",
-    ];
-    const currentRoleIndex = roles.indexOf(member.role.toLowerCase());
+    const currentRoleLower = member.role.toLowerCase();
+    const currentRoleIndex = roleLevelKeys.indexOf(currentRoleLower);
     const targetRole =
-      currentRoleIndex < roles.length - 1
-        ? roles[currentRoleIndex + 1]
-        : roles[currentRoleIndex];
+      currentRoleIndex >= 0 && currentRoleIndex < roleLevelKeys.length - 1
+        ? roleLevelKeys[currentRoleIndex + 1]
+        : currentRoleIndex >= 0
+          ? roleLevelKeys[currentRoleIndex]
+          : currentRoleLower;
 
     // Build AI prompt
     const systemPrompt = `You are an expert career development advisor for product designers.
@@ -347,5 +354,238 @@ REQUIREMENTS:
     });
 
     return { planId, planContent: planStructure };
+  },
+});
+
+export const generateAssessmentPrompts = action({
+  args: {
+    memberId: v.id("teamMembers"),
+    assessmentId: v.id("assessments"),
+    roleId: v.optional(v.id("roles")),
+  },
+  handler: async (ctx, args): Promise<Array<{ subCompetencyId: string; prompts: Array<{ question: string; lookFor: string }> }>> => {
+    const member: any = await ctx.runQuery(api.teamMembers.get, { id: args.memberId });
+    if (!member) throw new Error("Member not found");
+
+    const competencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.list, {});
+    const subCompetencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listSubCompetenciesByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.listSubCompetencies, {});
+
+    // Determine role type for level context
+    let roleType = "ic";
+    if (args.roleId) {
+      const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
+      if (role?.type === "management") roleType = "management";
+    }
+
+    const IC_LEVEL_KEYS = ["p1_entry", "p2_developing", "p3_career", "p4_advanced", "p5_principal"];
+    const MGMT_LEVEL_KEYS = ["m1_team_lead", "m2_manager", "m3_director", "m4_senior_director"];
+    const levelKeys = roleType === "management" ? MGMT_LEVEL_KEYS : IC_LEVEL_KEYS;
+
+    // Build framework context: each sub-competency with its criteria at the member's level
+    const NEW_TO_OLD: Record<string, string> = {
+      p1_entry: "associate", p2_developing: "intermediate", p3_career: "senior",
+      p4_advanced: "lead", p5_principal: "principal",
+    };
+    const memberLevelKey = member.role.toLowerCase().replace(/\s+/g, "_");
+
+    // Resolve criteria for the member's level
+    function getCriteria(sub: any, key: string): string[] {
+      if (sub.levelCriteria) {
+        if (sub.levelCriteria[key]) return sub.levelCriteria[key];
+        const mapped = NEW_TO_OLD[key];
+        if (mapped && sub.levelCriteria[mapped]) return sub.levelCriteria[mapped];
+      }
+      return [];
+    }
+
+    const subCompetencyContext = subCompetencies.map((sub: any) => {
+      const comp = competencies.find((c: any) => c._id === sub.competencyId);
+      const criteria = getCriteria(sub, memberLevelKey);
+      return {
+        id: sub._id,
+        title: sub.title,
+        competency: comp?.title || "Unknown",
+        criteria,
+      };
+    }).filter((s) => s.criteria.length > 0);
+
+    if (subCompetencyContext.length === 0) {
+      // No criteria found — store empty and return
+      await ctx.runMutation(api.assessments.updateGeneratedPrompts, {
+        id: args.assessmentId,
+        generatedPrompts: [],
+      });
+      return [];
+    }
+
+    const frameworkJson = JSON.stringify(subCompetencyContext, null, 2);
+
+    const systemPrompt = `You are an expert design management coach. Generate focused assessment discussion prompts to help a manager evaluate a team member during a 1:1 assessment session.
+
+For each sub-competency provided, generate 2-3 discussion prompts. Each prompt should:
+- Be practical, behavioral, and observable — not abstract
+- Help the manager observe or discuss the specific criteria at the member's current level
+- Be phrased as questions or discussion starters a manager would use in a 1:1
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "prompts": [
+    {
+      "subCompetencyId": "the sub-competency ID",
+      "prompts": [
+        {
+          "question": "A discussion prompt or question for the manager to use",
+          "lookFor": "What a strong demonstration looks like at this level"
+        }
+      ]
+    }
+  ]
+}`;
+
+    const userPrompt = `Generate assessment discussion prompts for ${member.name}, currently at level "${member.role}".
+
+LEVEL PROGRESSION: ${levelKeys.join(" → ")}
+
+SUB-COMPETENCIES WITH CRITERIA AT THEIR LEVEL:
+${frameworkJson}
+
+Generate 2-3 discussion prompts per sub-competency that help the manager evaluate performance against these specific criteria.`;
+
+    const client = new OpenAI();
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 3000,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("No response from OpenAI");
+
+    const parsed = JSON.parse(content);
+    const promptGroups = parsed.prompts;
+    if (!Array.isArray(promptGroups)) throw new Error("Invalid prompts format");
+
+    const result = promptGroups.map((g: any) => ({
+      subCompetencyId: String(g.subCompetencyId),
+      prompts: (g.prompts || []).map((p: any) => ({
+        question: String(p.question || ""),
+        lookFor: String(p.lookFor || ""),
+      })).filter((p: any) => p.question.length > 0),
+    })).filter((g: any) => g.prompts.length > 0);
+
+    // Store on the assessment record
+    await ctx.runMutation(api.assessments.updateGeneratedPrompts, {
+      id: args.assessmentId,
+      generatedPrompts: result,
+    });
+
+    return result;
+  },
+});
+
+export const generateInterviewQuestions = action({
+  args: {
+    stageId: v.id("hiringStages"),
+    candidateId: v.id("hiringCandidates"),
+    roleId: v.id("roles"),
+  },
+  handler: async (ctx, args): Promise<Array<{ category: string; question: string; signal: string }>> => {
+    // Fetch stage, candidate, role, and competency framework
+    const stage: any = await ctx.runQuery(api.hiringStages.get, { id: args.stageId });
+    if (!stage) throw new Error("Stage not found");
+
+    const candidate: any = await ctx.runQuery(api.candidates.get, { id: args.candidateId });
+    if (!candidate) throw new Error("Candidate not found");
+
+    const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
+    if (!role) throw new Error("Role not found");
+
+    const competencies: any[] = await ctx.runQuery(api.competencies.listByRole, { roleId: args.roleId });
+    const subCompetencies: any[] = await ctx.runQuery(api.competencies.listSubCompetenciesByRole, { roleId: args.roleId });
+
+    // Build competency framework summary
+    const frameworkSummary = competencies.map((comp: any) => {
+      const subs = subCompetencies
+        .filter((s: any) => s.competencyId === comp._id)
+        .map((s: any) => s.title);
+      return `${comp.title}: ${subs.join(", ")}`;
+    }).join("\n");
+
+    const systemPrompt = `You are an expert interviewer with deep knowledge across all professional disciplines. Generate structured interview questions tailored to the specific role, interview stage, the candidate's target level, and the role's competency framework.
+
+The STAGE INSTRUCTIONS define the purpose, focus areas, question style, and categories for this specific interview. Follow them closely — they are the primary guide for what to generate.
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "questions": [
+    {
+      "category": "Category name",
+      "question": "The interview question to ask",
+      "signal": "What a strong answer looks like, and what separates a good answer from a great one"
+    }
+  ]
+}
+
+Requirements:
+- Generate 10-15 questions organized by the categories specified in the stage instructions
+- Adapt question complexity and depth to the candidate's target level
+- Each signal should describe what a strong answer demonstrates and what separates good from great
+- Questions should feel natural and conversational, not like a checklist
+- Where the stage instructions reference the competency framework, incorporate specific competency areas into questions`;
+
+    const userPrompt = `Generate interview questions for this stage:
+
+STAGE: ${stage.title}
+${stage.aiInstructions ? `STAGE INSTRUCTIONS: ${stage.aiInstructions}` : ""}
+${stage.description ? `STAGE DESCRIPTION: ${stage.description}` : ""}
+
+CANDIDATE: ${candidate.name}
+TARGET ROLE: ${candidate.targetRole}
+ROLE: ${role.title} (${role.type})
+
+COMPETENCY FRAMEWORK:
+${frameworkSummary}
+
+Generate questions that probe the candidate's abilities relevant to this stage and their target level of "${candidate.targetRole}".`;
+
+    const client = new OpenAI();
+
+    const response = await client.chat.completions.create({
+      model: "gpt-4o",
+      max_tokens: 2048,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) throw new Error("No response from OpenAI");
+
+    try {
+      const parsed = JSON.parse(content);
+      const questions = parsed.questions;
+      if (!Array.isArray(questions) || questions.length === 0) {
+        throw new Error("Invalid questions format");
+      }
+      // Validate and sanitize
+      return questions.map((q: any) => ({
+        category: String(q.category || "General"),
+        question: String(q.question || ""),
+        signal: String(q.signal || ""),
+      })).filter((q: any) => q.question.length > 0);
+    } catch {
+      throw new Error("Failed to parse AI-generated questions");
+    }
   },
 });

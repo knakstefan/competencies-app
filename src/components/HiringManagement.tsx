@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
@@ -6,10 +6,12 @@ import { Id } from "../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { CandidateForm } from "./CandidateForm";
 import { SkillsRecommendation } from "./SkillsRecommendation";
+import { StagesTab } from "./StagesTab";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +48,8 @@ import {
   Clock,
   CircleX,
 } from "lucide-react";
+import { isTerminalStage, getStageLabel } from "@/lib/stageUtils";
+import { useRoleLevels } from "@/hooks/useRoleLevels";
 
 export interface HiringCandidate {
   _id: string;
@@ -55,7 +59,20 @@ export interface HiringCandidate {
   currentStage: string;
   targetRole: string;
   notes?: string;
+  roleId?: string;
   _creationTime: number;
+}
+
+export interface HiringStage {
+  _id: string;
+  roleId: string;
+  title: string;
+  description?: string;
+  stageType: string;
+  aiInstructions?: string;
+  gateMinScore?: number;
+  gateMinRatedPct?: number;
+  orderIndex: number;
 }
 
 interface CandidateWithStatus extends HiringCandidate {
@@ -67,17 +84,6 @@ interface HiringManagementProps {
   isAdmin: boolean;
   roleId?: Id<"roles">;
 }
-
-const STAGES = [
-  { key: "manager_interview", label: "Manager Interview" },
-  { key: "portfolio_review", label: "Portfolio Review" },
-  { key: "team_interview", label: "Team Interview" },
-  { key: "hired", label: "Hired" },
-  { key: "rejected", label: "Rejected" },
-];
-
-const getStageLabel = (stage: string) =>
-  STAGES.find((s) => s.key === stage)?.label || stage.replace(/_/g, " ");
 
 const getStageBadgeClass = (stage: string) => {
   switch (stage) {
@@ -91,31 +97,39 @@ const getStageBadgeClass = (stage: string) => {
 };
 
 const getStageBadgeVariant = (stage: string): "default" | "secondary" | "destructive" | "outline" => {
-  switch (stage) {
-    case "hired":
-      return "default";
-    case "rejected":
-      return "destructive";
-    case "team_interview":
-      return "secondary";
-    default:
-      return "outline";
-  }
+  if (stage === "hired") return "default";
+  if (stage === "rejected") return "destructive";
+  return "outline";
 };
 
 export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => {
+  const { levels } = useRoleLevels(roleId);
   const navigate = useNavigate();
   const candidates = useQuery(
     roleId ? api.candidates.listWithAssessmentStatusByRole : api.candidates.listWithAssessmentStatus,
     roleId ? { roleId } : {}
   );
+  const stages = useQuery(
+    api.hiringStages.listByRole,
+    roleId ? { roleId } : "skip"
+  ) as HiringStage[] | undefined;
   const removeCandidate = useMutation(api.candidates.remove);
   const updateStage = useMutation(api.candidates.updateStage);
+  const seedDefaults = useMutation(api.hiringStages.seedDefaults);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<HiringCandidate | null>(null);
   const [deletingCandidate, setDeletingCandidate] = useState<HiringCandidate | null>(null);
   const { toast } = useToast();
+
+  // Auto-seed default stages if empty
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (roleId && stages && stages.length === 0 && !seededRef.current) {
+      seededRef.current = true;
+      seedDefaults({ roleId });
+    }
+  }, [roleId, stages]);
 
   const loading = candidates === undefined;
 
@@ -154,6 +168,16 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
     }
   };
 
+  // Build dynamic stage menu items from DB stages + terminal states
+  const stageMenuItems = [
+    ...(stages || []).map((s) => ({ key: s._id, label: s.title })),
+    { key: "hired", label: "Hired" },
+    { key: "rejected", label: "Rejected" },
+  ];
+
+  const resolveLabel = (currentStage: string) =>
+    getStageLabel(currentStage, stages || []);
+
   // Loading state
   if (loading) {
     return (
@@ -165,7 +189,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
 
   const candidateList = (candidates || []) as CandidateWithStatus[];
   const activeCount = candidateList.filter(
-    (c) => c.currentStage !== "hired" && c.currentStage !== "rejected"
+    (c) => !isTerminalStage(c.currentStage)
   ).length;
   const hiredCount = candidateList.filter((c) => c.currentStage === "hired").length;
   const rejectedCount = candidateList.filter((c) => c.currentStage === "rejected").length;
@@ -263,6 +287,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                 setIsFormOpen(false);
               }}
               roleId={roleId}
+              levels={levels}
             />
           </DialogContent>
         </Dialog>
@@ -282,162 +307,182 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
           </p>
         </div>
 
-        {/* Stats bar */}
-        <div className="flex items-center justify-center">
-          <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <UserPlus className="w-3.5 h-3.5 text-primary/70" />
-              {candidateList.length} {candidateList.length === 1 ? "Candidate" : "Candidates"}
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" />
-              {activeCount} Active
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <CircleCheck className="w-3.5 h-3.5" />
-              {hiredCount} Hired
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <CircleX className="w-3.5 h-3.5" />
-              {rejectedCount} Rejected
-            </span>
+        <Tabs defaultValue="candidates">
+          <div className="flex justify-center mb-6">
+            <TabsList>
+              <TabsTrigger value="candidates">Candidates</TabsTrigger>
+              {isAdmin && <TabsTrigger value="stages">Pipeline Stages</TabsTrigger>}
+            </TabsList>
           </div>
-        </div>
 
-        {/* Skills to look for — full width */}
-        <SkillsRecommendation roleId={roleId} />
-
-        {/* Candidate cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
-          {candidateList.map((candidate, index) => (
-              <div
-                key={candidate._id}
-                className="animate-fade-up group"
-                style={{ animationDelay: `${index * 80}ms` }}
-              >
-                <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
-                  <div className="h-0.5 bg-gradient-knak" />
-                  <CardContent className="p-5 flex flex-col">
-                    {/* Top row: stage badge + actions */}
-                    <div className="flex items-start justify-between mb-3">
-                      <Badge
-                        variant={getStageBadgeVariant(candidate.currentStage)}
-                        className={`text-xs ${getStageBadgeClass(candidate.currentStage)}`}
-                      >
-                        {getStageLabel(candidate.currentStage)}
-                      </Badge>
-                      <div className="flex items-center gap-1">
-                        {isAdmin && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <MoreVertical className="h-3.5 w-3.5" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}>
-                                <SlidersVertical className="h-4 w-4 mr-2" />
-                                Assessment
-                              </DropdownMenuItem>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger>
-                                  <ArrowRight className="h-4 w-4 mr-2" />
-                                  Move Stage
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  {STAGES.map((stage) => (
-                                    <DropdownMenuItem
-                                      key={stage.key}
-                                      disabled={candidate.currentStage === stage.key}
-                                      onClick={() => handleStageChange(candidate._id, stage.key)}
-                                    >
-                                      {stage.label}
-                                    </DropdownMenuItem>
-                                  ))}
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setEditingCandidate(candidate);
-                                  setIsFormOpen(true);
-                                }}
-                              >
-                                <Pencil className="h-4 w-4 mr-2" />
-                                Edit
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeletingCandidate(candidate)}
-                                className="text-destructive focus:text-destructive"
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Name + target role */}
-                    <h3
-                      className="text-lg font-semibold mb-1 cursor-pointer hover:text-primary transition-colors"
-                      onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
-                    >
-                      {candidate.name}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-3">{candidate.targetRole}</p>
-
-                    {/* Footer: assessment status */}
-                    <div className="mt-auto pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">
-                      {candidate.currentStage === "hired" || candidate.currentStage === "rejected" ? (
-                        <span className="flex items-center gap-1.5">
-                          <Users className="w-3.5 h-3.5" />
-                          {candidate.currentStage === "hired" ? "Hired" : "Rejected"}
-                        </span>
-                      ) : candidate.currentStageCompleted ? (
-                        <>
-                          <Badge variant="outline" className="text-xs gap-1 font-normal">
-                            <Check className="h-3 w-3" />
-                            Assessed
-                          </Badge>
-                          {candidate.currentStageScore != null && (
-                            <span className="text-xs">
-                              {candidate.currentStageScore.toFixed(1)}/5
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-muted-foreground/70">Needs assessment</span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
+          <TabsContent value="candidates">
+            {/* Stats bar */}
+            <div className="flex items-center justify-center mb-8">
+              <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5 text-primary/70" />
+                  {candidateList.length} {candidateList.length === 1 ? "Candidate" : "Candidates"}
+                </span>
+                <div className="w-px h-3.5 bg-border" />
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  {activeCount} Active
+                </span>
+                <div className="w-px h-3.5 bg-border" />
+                <span className="flex items-center gap-1.5">
+                  <CircleCheck className="w-3.5 h-3.5" />
+                  {hiredCount} Hired
+                </span>
+                <div className="w-px h-3.5 bg-border" />
+                <span className="flex items-center gap-1.5">
+                  <CircleX className="w-3.5 h-3.5" />
+                  {rejectedCount} Rejected
+                </span>
               </div>
-            ))}
+            </div>
 
-            {/* Add candidate card */}
-            {isAdmin && (
-              <button
-                onClick={() => setIsFormOpen(true)}
-                className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
-                style={{ animationDelay: `${candidateList.length * 80}ms` }}
-              >
-                <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <span className="text-sm font-medium">Add Candidate</span>
-              </button>
-            )}
-        </div>
+            {/* Skills to look for */}
+            <SkillsRecommendation roleId={roleId} />
 
+            {/* Candidate cards grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start mt-8">
+              {candidateList.map((candidate, index) => (
+                  <div
+                    key={candidate._id}
+                    className="animate-fade-up group"
+                    style={{ animationDelay: `${index * 80}ms` }}
+                  >
+                    <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
+                      <div className="h-0.5 bg-gradient-knak" />
+                      <CardContent className="p-5 flex flex-col">
+                        {/* Top row: stage badge + actions */}
+                        <div className="flex items-start justify-between mb-3">
+                          <Badge
+                            variant={getStageBadgeVariant(candidate.currentStage)}
+                            className={`text-xs ${getStageBadgeClass(candidate.currentStage)}`}
+                          >
+                            {resolveLabel(candidate.currentStage)}
+                          </Badge>
+                          <div className="flex items-center gap-1">
+                            {isAdmin && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}>
+                                    <SlidersVertical className="h-4 w-4 mr-2" />
+                                    Assessment
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSub>
+                                    <DropdownMenuSubTrigger>
+                                      <ArrowRight className="h-4 w-4 mr-2" />
+                                      Move Stage
+                                    </DropdownMenuSubTrigger>
+                                    <DropdownMenuSubContent>
+                                      {stageMenuItems.map((stage) => (
+                                        <DropdownMenuItem
+                                          key={stage.key}
+                                          disabled={candidate.currentStage === stage.key}
+                                          onClick={() => handleStageChange(candidate._id, stage.key)}
+                                        >
+                                          {stage.label}
+                                        </DropdownMenuItem>
+                                      ))}
+                                    </DropdownMenuSubContent>
+                                  </DropdownMenuSub>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setEditingCandidate(candidate);
+                                      setIsFormOpen(true);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => setDeletingCandidate(candidate)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Name + target role */}
+                        <h3
+                          className="text-lg font-semibold mb-1 cursor-pointer hover:text-primary transition-colors"
+                          onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
+                        >
+                          {candidate.name}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mb-3">{candidate.targetRole}</p>
+
+                        {/* Footer: assessment status */}
+                        <div className="mt-auto pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">
+                          {isTerminalStage(candidate.currentStage) ? (
+                            <span className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5" />
+                              {candidate.currentStage === "hired" ? "Hired" : "Rejected"}
+                            </span>
+                          ) : candidate.currentStageCompleted ? (
+                            <>
+                              <Badge variant="outline" className="text-xs gap-1 font-normal">
+                                <Check className="h-3 w-3" />
+                                Assessed
+                              </Badge>
+                              {candidate.currentStageScore != null && (
+                                <span className="text-xs">
+                                  {candidate.currentStageScore.toFixed(1)}/5
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/70">Needs assessment</span>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                ))}
+
+                {/* Add candidate card */}
+                {isAdmin && (
+                  <button
+                    onClick={() => setIsFormOpen(true)}
+                    className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
+                    style={{ animationDelay: `${candidateList.length * 80}ms` }}
+                  >
+                    <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <span className="text-sm font-medium">Add Candidate</span>
+                  </button>
+                )}
+            </div>
+          </TabsContent>
+
+          {isAdmin && roleId && (
+            <TabsContent value="stages">
+              <StagesTab
+                roleId={roleId}
+                stages={stages || []}
+                isAdmin={isAdmin}
+              />
+            </TabsContent>
+          )}
+        </Tabs>
       </div>
 
       {/* Form dialog */}
@@ -465,6 +510,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
               setIsFormOpen(false);
             }}
             roleId={roleId}
+            levels={levels}
           />
         </DialogContent>
       </Dialog>

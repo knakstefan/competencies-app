@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Competency, SubCompetency } from "@/types/competency";
 import { exportToJSON, exportToMarkdown } from "@/lib/competencyFormat";
+import { RoleLevel } from "@/lib/levelUtils";
 import { Copy, Check, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,6 +20,7 @@ interface CompetencyExportDialogProps {
   onOpenChange: (open: boolean) => void;
   competencies: Competency[];
   subCompetencies: SubCompetency[];
+  levels?: RoleLevel[];
 }
 
 export const CompetencyExportDialog = ({
@@ -26,6 +28,7 @@ export const CompetencyExportDialog = ({
   onOpenChange,
   competencies,
   subCompetencies,
+  levels,
 }: CompetencyExportDialogProps) => {
   const [format, setFormat] = useState<"markdown" | "json">("markdown");
   const [copied, setCopied] = useState(false);

@@ -82,9 +82,22 @@ export const create = mutation({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
+    // If roleId provided and no explicit currentStage, use the first hiring stage ID
+    let defaultStage = args.currentStage || "manager_interview";
+    if (args.roleId && !args.currentStage) {
+      const stages = await ctx.db
+        .query("hiringStages")
+        .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId!))
+        .collect();
+      const sorted = stages.sort((a, b) => a.orderIndex - b.orderIndex);
+      if (sorted.length > 0) {
+        defaultStage = sorted[0]._id;
+      }
+    }
+
     return await ctx.db.insert("hiringCandidates", {
       ...args,
-      currentStage: args.currentStage || "manager_interview",
+      currentStage: defaultStage,
     });
   },
 });

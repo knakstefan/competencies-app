@@ -1,28 +1,22 @@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-export type Level = "associate" | "intermediate" | "senior" | "lead" | "principal";
+import { RoleLevel, FALLBACK_LEVELS, getLevelOptions } from "@/lib/levelUtils";
 
 interface LevelFilterProps {
-  currentLevel: Level;
-  onLevelChange: (level: Level) => void;
+  currentLevel: string;
+  onLevelChange: (level: string) => void;
+  levels?: RoleLevel[];
 }
 
-export const LevelFilter = ({ currentLevel, onLevelChange }: LevelFilterProps) => {
-  const levels: { value: Level; label: string }[] = [
-    { value: "associate", label: "Associate" },
-    { value: "intermediate", label: "Intermediate" },
-    { value: "senior", label: "Senior" },
-    { value: "lead", label: "Lead Designer" },
-    { value: "principal", label: "Principal" },
-  ];
+export const LevelFilter = ({ currentLevel, onLevelChange, levels = FALLBACK_LEVELS }: LevelFilterProps) => {
+  const levelOptions = getLevelOptions(levels);
 
   return (
-    <Tabs value={currentLevel} onValueChange={(value) => onLevelChange(value as Level)}>
-      <TabsList className="grid w-full grid-cols-5 h-auto">
-        {levels.map((level) => (
+    <Tabs value={currentLevel} onValueChange={(value) => onLevelChange(value)}>
+      <TabsList style={{ gridTemplateColumns: `repeat(${levelOptions.length}, 1fr)` }} className="grid w-full h-auto">
+        {levelOptions.map((level) => (
           <TabsTrigger
-            key={level.value}
-            value={level.value}
+            key={level.key}
+            value={level.key}
             className="text-xs sm:text-sm py-2 px-3 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             {level.label}

@@ -72,11 +72,7 @@ export const CompetencyImportDialog = ({
         subCompetencies: comp.subCompetencies.map((sub, subIndex) => ({
           title: sub.title,
           orderIndex: subIndex + 1,
-          associateLevel: sub.associate_level || undefined,
-          intermediateLevel: sub.intermediate_level || undefined,
-          seniorLevel: sub.senior_level || undefined,
-          leadLevel: sub.lead_level || undefined,
-          principalLevel: sub.principal_level || undefined,
+          levelCriteria: sub.level_criteria || {},
         })),
       }));
 
