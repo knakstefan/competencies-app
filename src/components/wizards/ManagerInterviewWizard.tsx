@@ -219,6 +219,28 @@ export const ManagerInterviewWizard = ({
       if (assessment?.notes) {
         setOverallImpression(assessment.notes);
       }
+
+      // Navigate to furthest completion point
+      const loadedQuestions = (assessment?.generatedQuestions?.length > 0
+        ? assessment.generatedQuestions as InterviewQuestion[]
+        : FALLBACK_QUESTIONS);
+      const localCategories = getInterviewCategories(loadedQuestions);
+      const localDisplayOrder: number[] = [];
+      for (const cat of localCategories) {
+        loadedQuestions.forEach((q, i) => {
+          if (q.category === cat) localDisplayOrder.push(i);
+        });
+      }
+
+      if (assessment?.status === "completed") {
+        setCurrentStep(loadedQuestions.length); // summary step
+      } else {
+        const firstUnrated = localDisplayOrder.findIndex(
+          origIdx => !responseMap[origIdx]?.rating
+        );
+        setCurrentStep(firstUnrated === -1 ? loadedQuestions.length : firstUnrated);
+      }
+
       setInitializing(false);
     } catch {
       toast({
@@ -457,11 +479,12 @@ export const ManagerInterviewWizard = ({
   return (
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0">
+        <DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col gap-0">
           {/* Gradient top border */}
-          <div className="h-1 bg-gradient-knak" />
+          <div className="h-1 bg-gradient-knak shrink-0" />
 
-          <div className="px-6 pt-4 pb-6 space-y-6">
+          {/* Header */}
+          <div className="shrink-0 px-6 pt-4 pb-3 space-y-4">
             <DialogHeader>
               <DialogTitle className="flex items-center justify-between">
                 <span>
@@ -469,7 +492,20 @@ export const ManagerInterviewWizard = ({
                 </span>
               </DialogTitle>
             </DialogHeader>
+            {!initializing && !generatingQuestions && (
+              <WizardNavigationRail
+                categories={categories}
+                questions={navQuestions}
+                responses={navResponses}
+                currentStep={currentStep}
+                onNavigate={handleDotNavigate}
+                isSummaryStep={isSummaryStep}
+              />
+            )}
+          </div>
 
+          {/* Scrollable body */}
+          <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-6">
             {initializing || generatingQuestions ? (
               <div className="py-12 text-center text-muted-foreground space-y-3">
                 {generatingQuestions ? (
@@ -487,105 +523,95 @@ export const ManagerInterviewWizard = ({
                   <p>Loading...</p>
                 )}
               </div>
+            ) : isSummaryStep ? (
+              <WizardSummary
+                categories={categories}
+                questions={summaryQuestions}
+                responses={summaryResponses}
+                onNavigate={handleNavigate}
+                overallImpression={overallImpression}
+                onOverallImpressionChange={setOverallImpression}
+              />
             ) : (
-              <div className="space-y-6">
-                {/* Navigation rail */}
-                <WizardNavigationRail
-                  categories={categories}
-                  questions={navQuestions}
-                  responses={navResponses}
-                  currentStep={currentStep}
-                  onNavigate={handleDotNavigate}
-                  isSummaryStep={isSummaryStep}
-                />
+              <div key={currentStep} className="animate-fade-up space-y-4">
+                {/* Category header */}
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {currentQuestion.category}
+                </p>
 
-                {isSummaryStep ? (
-                  <WizardSummary
-                    categories={categories}
-                    questions={summaryQuestions}
-                    responses={summaryResponses}
-                    onNavigate={handleNavigate}
-                    overallImpression={overallImpression}
-                    onOverallImpressionChange={setOverallImpression}
-                  />
-                ) : (
-                  <div key={currentStep} className="animate-fade-up space-y-4">
-                    {/* Category header */}
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {currentQuestion.category}
-                    </p>
+                {/* Question */}
+                <p className="text-lg font-medium">
+                  {currentQuestion.question}
+                </p>
 
-                    {/* Question */}
-                    <p className="text-lg font-medium">
-                      {currentQuestion.question}
-                    </p>
-
-                    {/* Rating tabs */}
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Rating</label>
-                      <Tabs
-                        value={currentResponse.rating || ""}
-                        onValueChange={(value) => updateResponse("rating", value)}
-                        className="w-full"
-                      >
-                        <TabsList className="grid w-full grid-cols-5">
-                          {RATING_OPTIONS.map((opt) => (
-                            <TabsTrigger
-                              key={opt.value}
-                              value={opt.value}
-                              className={`text-xs px-1 ${opt.colorClass}`}
-                              onMouseEnter={() => setHoveredRating(opt.value)}
-                              onMouseLeave={() => setHoveredRating(null)}
-                            >
-                              {opt.label}
-                            </TabsTrigger>
-                          ))}
-                        </TabsList>
-                      </Tabs>
-                      <p className="text-xs text-muted-foreground h-4">
-                        {activeHint ?? "\u00A0"}
-                      </p>
-                    </div>
-
-                    {/* Notes */}
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Notes</label>
-                      <Textarea
-                        placeholder={currentQuestion.signal || "Enter observations and notes about the candidate's response..."}
-                        value={currentResponse.responseNotes || ""}
-                        onChange={(e) => updateResponse("responseNotes", e.target.value)}
-                        rows={6}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Navigation */}
-                <div className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    onClick={handleBack}
-                    disabled={currentStep === 0}
+                {/* Rating tabs */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Rating</label>
+                  <Tabs
+                    value={currentResponse.rating || ""}
+                    onValueChange={(value) => updateResponse("rating", value)}
+                    className="w-full"
                   >
-                    <ChevronLeft className="h-4 w-4 mr-2" />
-                    Back
-                  </Button>
+                    <TabsList className="grid w-full grid-cols-5">
+                      {RATING_OPTIONS.map((opt) => (
+                        <TabsTrigger
+                          key={opt.value}
+                          value={opt.value}
+                          className={`text-xs px-1 ${opt.colorClass}`}
+                          onMouseEnter={() => setHoveredRating(opt.value)}
+                          onMouseLeave={() => setHoveredRating(null)}
+                        >
+                          {opt.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                  <p className="text-xs text-muted-foreground h-4">
+                    {activeHint ?? "\u00A0"}
+                  </p>
+                </div>
 
-                  {isSummaryStep ? (
-                    <Button onClick={handleComplete} className="gap-2">
-                      <Check className="h-4 w-4" />
-                      Complete Assessment
-                    </Button>
-                  ) : (
-                    <Button onClick={handleNext}>
-                      {currentStep === INTERVIEW_QUESTIONS.length - 1 ? "Review" : "Next"}
-                      <ChevronRight className="h-4 w-4 ml-2" />
-                    </Button>
-                  )}
+                {/* Notes */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Notes</label>
+                  <Textarea
+                    placeholder={currentQuestion.signal || "Enter observations and notes about the candidate's response..."}
+                    value={currentResponse.responseNotes || ""}
+                    onChange={(e) => updateResponse("responseNotes", e.target.value)}
+                    rows={6}
+                  />
                 </div>
               </div>
             )}
           </div>
+
+          {/* Footer */}
+          {!initializing && !generatingQuestions && (
+            <div className="shrink-0 px-6 pt-3 pb-4 border-t">
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  disabled={currentStep === 0}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
+
+                {isSummaryStep ? (
+                  <Button onClick={handleComplete} className="gap-2">
+                    <Check className="h-4 w-4" />
+                    Complete Assessment
+                  </Button>
+                ) : (
+                  <Button onClick={handleNext}>
+                    {currentStep === INTERVIEW_QUESTIONS.length - 1 ? "Review" : "Next"}
+                    <ChevronRight className="h-4 w-4 ml-2" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

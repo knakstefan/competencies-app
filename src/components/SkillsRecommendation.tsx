@@ -12,8 +12,6 @@ import {
   ChevronDown,
   ShieldCheck,
 } from "lucide-react";
-import { useRoleLevels } from "@/hooks/useRoleLevels";
-import { buildLevelBaseScores, labelToKey } from "@/lib/levelUtils";
 
 interface SubCompetencyScore {
   subCompetencyId: string;
@@ -32,13 +30,15 @@ interface CompetencyScore {
   subScores: SubCompetencyScore[];
 }
 
-const EVALUATION_MODIFIERS: Record<string, number> = {
-  well_below: -2,
-  below: -1,
-  target: 0,
-  above: 2,
-  well_above: 4,
+const EVALUATION_SCORES: Record<string, number> = {
+  well_below: 1,
+  below: 2,
+  target: 3,
+  above: 4,
+  well_above: 5,
 };
+
+const MAX_SCORE = 5;
 
 const getStrengthLabel = (avgScore: number, maxScore: number) => {
   const ratio = avgScore / maxScore;
@@ -64,8 +64,6 @@ interface SkillsRecommendationProps {
 }
 
 export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {}) => {
-  const { levels } = useRoleLevels(roleId);
-  const LEVEL_BASE_SCORES = buildLevelBaseScores(levels);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showStrengths, setShowStrengths] = useState(false);
 
@@ -147,19 +145,9 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
     subCompTitleMap.set(sc._id, sc.title);
   });
 
-  // Determine max possible score from team composition
-  const maxPossibleScore = Math.max(
-    ...members.map((m: any) => {
-      const key = labelToKey(levels, m.role);
-      const base = LEVEL_BASE_SCORES[key] || 4;
-      return base + 4;
-    }),
-    6
-  );
-
-  // Calculate scores per competency AND per sub-competency
+  // Calculate scores per competency AND per sub-competency using 1-5 scale
   const competencyScores: CompetencyScore[] = competencies.map((comp: any) => {
-    let totalScore = 0;
+    let compTotal = 0;
     let memberCount = 0;
 
     const subScoreAccumulator = new Map<
@@ -179,24 +167,20 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
 
       if (memberProgress.length === 0) return;
 
-      const memberKey = labelToKey(levels, member.role);
-      const baseScore = LEVEL_BASE_SCORES[memberKey] || 4;
-
-      let totalModifier = 0;
-      let evalCount = 0;
+      let memberTotal = 0;
+      let memberEvalCount = 0;
 
       memberProgress.forEach((progress: any) => {
         const evaluations = evaluationsByProgress.get(progress._id) || [];
 
-        let subMod = 0;
+        let subTotal = 0;
         let subEvalCount = 0;
         evaluations.forEach((evaluation: any) => {
-          evalCount++;
+          memberEvalCount++;
           subEvalCount++;
-          const mod = EVALUATION_MODIFIERS[evaluation.evaluation] || 0;
-          totalModifier += mod;
-          subMod += mod;
+          subTotal += EVALUATION_SCORES[evaluation.evaluation] || 3;
         });
+        memberTotal += subTotal;
 
         if (subEvalCount > 0) {
           const subId = progress.subCompetencyId;
@@ -205,23 +189,20 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
             count: 0,
             evalCount: 0,
           };
-          const avgMod = subMod / subEvalCount;
-          existing.total += Math.max(0, Math.min(14, baseScore + avgMod));
+          existing.total += subTotal / subEvalCount;
           existing.count += 1;
           existing.evalCount += subEvalCount;
           subScoreAccumulator.set(subId, existing);
         }
       });
 
-      if (evalCount > 0) {
-        const avgModifier = totalModifier / evalCount;
-        const memberScore = Math.max(0, Math.min(14, baseScore + avgModifier));
-        totalScore += memberScore;
+      if (memberEvalCount > 0) {
+        compTotal += memberTotal / memberEvalCount;
         memberCount++;
       }
     });
 
-    const avgScore = memberCount > 0 ? totalScore / memberCount : 0;
+    const avgScore = memberCount > 0 ? compTotal / memberCount : 0;
 
     const subScores: SubCompetencyScore[] = [];
     subScoreAccumulator.forEach((data, subId) => {
@@ -237,9 +218,9 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
     let priority: "not_assessed" | "high" | "medium" | "strength";
     if (memberCount === 0) {
       priority = "not_assessed";
-    } else if (avgScore < 4) {
+    } else if (avgScore < 2.5) {
       priority = "high";
-    } else if (avgScore < 6) {
+    } else if (avgScore < 3.5) {
       priority = "medium";
     } else {
       priority = "strength";
@@ -249,7 +230,7 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
       competencyId: comp._id,
       competencyTitle: comp.title,
       avgScore,
-      maxScore: maxPossibleScore,
+      maxScore: MAX_SCORE,
       priority,
       memberCount,
       subScores,

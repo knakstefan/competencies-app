@@ -630,6 +630,7 @@ export const MemberProgressView = ({ member, isAdmin, onDataChange, roleId }: Me
         onClose={() => { setWizardOpen(false); setEditingAssessmentId(null); }}
         memberId={member._id}
         memberRole={member.role}
+        memberName={member.name}
         competencies={competencies as any}
         subCompetencies={subCompetencies as any}
         existingAssessmentId={editingAssessmentId}
