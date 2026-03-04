@@ -2,8 +2,9 @@ import { Link } from "react-router-dom";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useRole } from "@/hooks/useRole";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ChartNetwork, Users, UserPlus, Loader2 } from "lucide-react";
+import { ChartNetwork, Users, UserPlus, FileText, Loader2 } from "lucide-react";
 
 const areas = [
   {
@@ -52,6 +53,14 @@ const RoleOverviewPage = () => {
           {role?.description && (
             <p className="text-muted-foreground max-w-md mx-auto">{role.description}</p>
           )}
+          <div className="pt-1">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="job-description" className="gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Job Description
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Stats bar */}

@@ -1,11 +1,10 @@
-import { Link } from "react-router-dom";
-import { UserCog, LogOut, User } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -15,7 +14,16 @@ interface NavbarProps {
   onSignOut: () => void;
 }
 
+const navLinks = [
+  { to: "/", label: "Home", match: (p: string) => p === "/" || p.startsWith("/roles") },
+  { to: "/levels", label: "Levels", match: (p: string) => p === "/levels" },
+  { to: "/pipeline", label: "Hiring Stages", match: (p: string) => p === "/pipeline" },
+  { to: "/users", label: "Members", match: (p: string) => p === "/users" },
+];
+
 export const Navbar = ({ onSignOut }: NavbarProps) => {
+  const location = useLocation();
+
   return (
     <nav className="border-b bg-card/50 backdrop-blur-sm">
       <div className="container mx-auto px-4">
@@ -23,6 +31,20 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
           <Link to="/" className="flex items-center shrink-0">
             <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
           </Link>
+
+          <div className="flex items-center gap-1">
+            {navLinks.map((link) => (
+              <Button
+                key={link.to}
+                variant="ghost"
+                size="sm"
+                asChild
+                className={link.match(location.pathname) ? "text-foreground" : "text-muted-foreground"}
+              >
+                <Link to={link.to}>{link.label}</Link>
+              </Button>
+            ))}
+          </div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -35,13 +57,6 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild>
-                <Link to="/users" className="flex items-center gap-2 cursor-pointer">
-                  <UserCog className="h-4 w-4" />
-                  Members
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={onSignOut} className="flex items-center gap-2 cursor-pointer">
                 <LogOut className="h-4 w-4" />
                 Sign Out

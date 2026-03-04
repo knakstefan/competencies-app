@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("roles")
       .withIndex("by_orderIndex")
@@ -14,6 +16,7 @@ export const list = query({
 export const get = query({
   args: { id: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -21,6 +24,7 @@ export const get = query({
 export const getWithStats = query({
   args: { id: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const role = await ctx.db.get(args.id);
     if (!role) return null;
 
@@ -36,12 +40,17 @@ export const getWithStats = query({
       .query("hiringCandidates")
       .withIndex("by_roleId", (q) => q.eq("roleId", role._id))
       .collect();
+    const jobDescriptions = await ctx.db
+      .query("jobDescriptions")
+      .withIndex("by_roleId", (q) => q.eq("roleId", role._id))
+      .collect();
 
     return {
       ...role,
       competencyCount: competencies.length,
       memberCount: members.length,
       candidateCount: candidates.length,
+      jdCount: jobDescriptions.length,
     };
   },
 });
@@ -49,6 +58,7 @@ export const getWithStats = query({
 export const listWithStats = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     const roles = await ctx.db
       .query("roles")
       .withIndex("by_orderIndex")
@@ -68,12 +78,17 @@ export const listWithStats = query({
           .query("hiringCandidates")
           .withIndex("by_roleId", (q) => q.eq("roleId", role._id))
           .collect();
+        const jobDescriptions = await ctx.db
+          .query("jobDescriptions")
+          .withIndex("by_roleId", (q) => q.eq("roleId", role._id))
+          .collect();
 
         return {
           ...role,
           competencyCount: competencies.length,
           memberCount: members.length,
           candidateCount: candidates.length,
+          jdCount: jobDescriptions.length,
         };
       })
     );
@@ -89,6 +104,7 @@ export const create = mutation({
     createdBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("roles", args);
   },
 });
@@ -102,6 +118,7 @@ export const update = mutation({
     orderIndex: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -110,6 +127,8 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     // Cascade delete all scoped data
 
     // Delete competencies and their sub-competencies
@@ -243,6 +262,15 @@ export const remove = mutation({
       await ctx.db.delete(level._id);
     }
 
+    // Delete job descriptions
+    const jobDescriptions = await ctx.db
+      .query("jobDescriptions")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.id))
+      .collect();
+    for (const jd of jobDescriptions) {
+      await ctx.db.delete(jd._id);
+    }
+
     await ctx.db.delete(args.id);
   },
 });
@@ -250,6 +278,8 @@ export const remove = mutation({
 export const migrateExistingData = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx);
+
     // Check if any roles already exist
     const existingRoles = await ctx.db.query("roles").collect();
     if (existingRoles.length > 0) {

@@ -2,6 +2,26 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  globalLevels: defineTable({
+    type: v.union(v.literal("ic"), v.literal("management")),
+    key: v.string(),
+    label: v.string(),
+    description: v.optional(v.string()),
+    orderIndex: v.number(),
+  })
+    .index("by_type", ["type"])
+    .index("by_type_orderIndex", ["type", "orderIndex"]),
+
+  globalStages: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    stageType: v.string(),
+    aiInstructions: v.optional(v.string()),
+    gateMinScore: v.optional(v.number()),
+    gateMinRatedPct: v.optional(v.number()),
+    orderIndex: v.number(),
+  }).index("by_orderIndex", ["orderIndex"]),
+
   users: defineTable({
     clerkId: v.string(),
     email: v.string(),
@@ -69,6 +89,23 @@ export default defineSchema({
         lookFor: v.string(),
       })),
     }))),
+    generatedSummary: v.optional(v.object({
+      overallNarrative: v.string(),
+      strengths: v.array(v.object({
+        competency: v.string(),
+        detail: v.string(),
+      })),
+      areasNeedingSupport: v.array(v.object({
+        competency: v.string(),
+        subCompetency: v.string(),
+        criterion: v.string(),
+        rating: v.string(),
+        currentLevelExpectation: v.string(),
+        nextLevelExpectation: v.string(),
+        guidance: v.string(),
+      })),
+      overallReadiness: v.string(),
+    })),
   })
     .index("by_memberId", ["memberId"])
     .index("by_status", ["status"]),
@@ -130,6 +167,20 @@ export default defineSchema({
     completedAt: v.optional(v.string()),
     createdBy: v.optional(v.string()),
     updatedAt: v.string(),
+    generatedSummary: v.optional(v.object({
+      overallNarrative: v.string(),
+      strengths: v.array(v.object({
+        area: v.string(),
+        detail: v.string(),
+      })),
+      concerns: v.array(v.object({
+        area: v.string(),
+        question: v.string(),
+        rating: v.string(),
+        observation: v.string(),
+      })),
+      hiringRecommendation: v.string(),
+    })),
   }).index("by_candidateId", ["candidateId"]),
 
   candidateCompetencyProgress: defineTable({
@@ -181,9 +232,22 @@ export default defineSchema({
     label: v.string(),
     description: v.optional(v.string()),
     orderIndex: v.number(),
+    globalLevelId: v.optional(v.id("globalLevels")),
   })
     .index("by_roleId", ["roleId"])
-    .index("by_roleId_orderIndex", ["roleId", "orderIndex"]),
+    .index("by_roleId_orderIndex", ["roleId", "orderIndex"])
+    .index("by_globalLevelId", ["globalLevelId"]),
+
+  jobDescriptions: defineTable({
+    roleId: v.id("roles"),
+    levelKey: v.string(),
+    levelLabel: v.string(),
+    content: v.any(),
+    generatedAt: v.string(),
+    generatedBy: v.optional(v.string()),
+  })
+    .index("by_roleId", ["roleId"])
+    .index("by_roleId_levelKey", ["roleId", "levelKey"]),
 
   hiringStages: defineTable({
     roleId: v.id("roles"),
@@ -194,7 +258,9 @@ export default defineSchema({
     gateMinScore: v.optional(v.number()),
     gateMinRatedPct: v.optional(v.number()),
     orderIndex: v.number(),
+    globalStageId: v.optional(v.id("globalStages")),
   })
     .index("by_roleId", ["roleId"])
-    .index("by_roleId_orderIndex", ["roleId", "orderIndex"]),
+    .index("by_roleId_orderIndex", ["roleId", "orderIndex"])
+    .index("by_globalStageId", ["globalStageId"]),
 });

@@ -5,7 +5,7 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { Navbar } from "@/components/Navbar";
 import { useAuth } from "@/hooks/useAuth";
-import RolesPage from "./pages/RolesPage";
+import HomePage from "./pages/HomePage";
 import RoleDetailPage from "./pages/RoleDetailPage";
 import RoleOverviewPage from "./pages/RoleOverviewPage";
 import CompetenciesPage from "./pages/CompetenciesPage";
@@ -14,6 +14,9 @@ import TeamMemberDetailPage from "./pages/TeamMemberDetailPage";
 import UsersPage from "./pages/UsersPage";
 import HiringPage from "./pages/HiringPage";
 import CandidateDetailPage from "./pages/CandidateDetailPage";
+import LevelsPage from "./pages/LevelsPage";
+import PipelinePage from "./pages/PipelinePage";
+import JobDescriptionPage from "./pages/JobDescriptionPage";
 import Auth from "./pages/Auth";
 import AcceptInvite from "./pages/AcceptInvite";
 import NotFound from "./pages/NotFound";
@@ -57,7 +60,7 @@ const App = () => (
             path="/"
             element={
               <AppLayout>
-                <RolesPage />
+                <HomePage />
               </AppLayout>
             }
           />
@@ -75,7 +78,24 @@ const App = () => (
             <Route path="team/:memberId" element={<TeamMemberDetailPage />} />
             <Route path="hiring" element={<HiringPage />} />
             <Route path="hiring/:candidateId" element={<CandidateDetailPage />} />
+            <Route path="job-description" element={<JobDescriptionPage />} />
           </Route>
+          <Route
+            path="/levels"
+            element={
+              <AppLayout>
+                <LevelsPage />
+              </AppLayout>
+            }
+          />
+          <Route
+            path="/pipeline"
+            element={
+              <AppLayout>
+                <PipelinePage />
+              </AppLayout>
+            }
+          />
           <Route
             path="/users"
             element={

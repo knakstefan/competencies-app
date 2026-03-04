@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const getById = query({
   args: { id: v.id("candidateAssessments") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -11,6 +13,7 @@ export const getById = query({
 export const listForCandidate = query({
   args: { candidateId: v.id("hiringCandidates") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("candidateAssessments")
       .withIndex("by_candidateId", (q) => q.eq("candidateId", args.candidateId))
@@ -31,6 +34,7 @@ export const createDraft = mutation({
     createdBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("candidateAssessments", {
       candidateId: args.candidateId,
       stage: args.stage,
@@ -50,6 +54,7 @@ export const complete = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     await ctx.db.patch(args.id, {
       status: "completed",
       completedAt: new Date().toISOString(),
@@ -63,6 +68,7 @@ export const complete = mutation({
 export const remove = mutation({
   args: { id: v.id("candidateAssessments") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     // Delete progress + evaluations
     const progress = await ctx.db
       .query("candidateCompetencyProgress")
@@ -101,6 +107,33 @@ export const remove = mutation({
   },
 });
 
+export const updateGeneratedSummary = mutation({
+  args: {
+    id: v.id("candidateAssessments"),
+    generatedSummary: v.object({
+      overallNarrative: v.string(),
+      strengths: v.array(v.object({
+        area: v.string(),
+        detail: v.string(),
+      })),
+      concerns: v.array(v.object({
+        area: v.string(),
+        question: v.string(),
+        rating: v.string(),
+        observation: v.string(),
+      })),
+      hiringRecommendation: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await requireEditor(ctx);
+    await ctx.db.patch(args.id, {
+      generatedSummary: args.generatedSummary,
+      updatedAt: new Date().toISOString(),
+    });
+  },
+});
+
 export const updateGeneratedQuestions = mutation({
   args: {
     id: v.id("candidateAssessments"),
@@ -111,6 +144,7 @@ export const updateGeneratedQuestions = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     await ctx.db.patch(args.id, {
       generatedQuestions: args.generatedQuestions,
       updatedAt: new Date().toISOString(),

@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireAdmin } from "./auth.helpers";
 
 export const getCurrentUser = query({
   args: {},
@@ -19,6 +20,7 @@ export const getCurrentUser = query({
 export const listAll = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db.query("users").collect();
   },
 });
@@ -29,6 +31,7 @@ export const updateRole = mutation({
     role: v.union(v.literal("admin"), v.literal("editor"), v.literal("viewer")),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     await ctx.db.patch(args.id, { role: args.role });
   },
 });
@@ -58,6 +61,7 @@ export const ensureUser = mutation({
 export const removeUser = mutation({
   args: { id: v.id("users") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     await ctx.db.delete(args.id);
   },
 });

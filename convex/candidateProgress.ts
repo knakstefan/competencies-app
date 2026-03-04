@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor } from "./auth.helpers";
 
 export const listForAssessment = query({
   args: { assessmentId: v.id("candidateAssessments") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("candidateCompetencyProgress")
       .withIndex("by_assessmentId", (q) => q.eq("assessmentId", args.assessmentId))
@@ -14,6 +16,7 @@ export const listForAssessment = query({
 export const listForCandidate = query({
   args: { candidateId: v.id("hiringCandidates") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("candidateCompetencyProgress")
       .withIndex("by_candidateId", (q) => q.eq("candidateId", args.candidateId))
@@ -30,6 +33,7 @@ export const upsert = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // Find existing
     const existing = await ctx.db
       .query("candidateCompetencyProgress")

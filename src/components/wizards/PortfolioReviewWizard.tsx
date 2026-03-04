@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { useMutation, useConvex } from "convex/react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useMutation, useConvex, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,7 @@ import {
 import { RATING_OPTIONS, RATING_SCORE_MAP } from "@/lib/ratingConstants";
 import { WizardNavigationRail } from "./WizardNavigationRail";
 import { WizardSummary } from "./WizardSummary";
+import { CandidateAssessmentSummary } from "../CandidateAssessmentSummary";
 
 interface PortfolioReviewWizardProps {
   open: boolean;
@@ -63,14 +64,23 @@ export const PortfolioReviewWizard = ({
   const [overallImpression, setOverallImpression] = useState("");
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<string | null>(null);
+  const [generatedSummary, setGeneratedSummary] = useState<any>(null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [summaryDataKey, setSummaryDataKey] = useState<string | null>(null);
   const { toast } = useToast();
 
   const client = useConvex();
   const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
   const completeMutation = useMutation(api.candidateAssessments.complete);
   const upsertResponse = useMutation(api.portfolioResponses.upsert);
+  const generateCandidateAssessmentSummary = useAction(api.ai.generateCandidateAssessmentSummary);
 
   const isSummaryStep = currentStep === PORTFOLIO_QUESTIONS.length;
+
+  // Stable fingerprint of rating data for AI summary regeneration detection
+  const assessmentFingerprint = useMemo(() =>
+    PORTFOLIO_QUESTIONS.map((_, i) => `${i}:${responses[i]?.competencyLevel || ""}`).join("|"),
+    [responses, PORTFOLIO_QUESTIONS]);
 
   useEffect(() => {
     if (open) {
@@ -85,6 +95,9 @@ export const PortfolioReviewWizard = ({
       setAssessmentId(null);
       setOverallImpression("");
       setHoveredRating(null);
+      setGeneratedSummary(null);
+      setGeneratingSummary(false);
+      setSummaryDataKey(null);
     }
   }, [open, existingAssessmentId]);
 
@@ -317,6 +330,31 @@ export const PortfolioReviewWizard = ({
     return () => { flushSave(); };
   }, [flushSave]);
 
+  // AI summary generation on summary step
+  useEffect(() => {
+    if (!isSummaryStep || !assessmentId || generatingSummary) return;
+    if (generatedSummary && summaryDataKey === assessmentFingerprint) return;
+
+    setGeneratingSummary(true);
+    const generate = async () => {
+      try {
+        await flushCurrentResponse();
+        const summary = await generateCandidateAssessmentSummary({
+          assessmentId: assessmentId as Id<"candidateAssessments">,
+          candidateId: candidate._id as Id<"hiringCandidates">,
+        });
+        setGeneratedSummary(summary);
+        setSummaryDataKey(assessmentFingerprint);
+      } catch (error) {
+        console.error("Failed to generate AI assessment summary:", error);
+        toast({ title: "AI Summary", description: "Could not generate AI summary. Manual summary is still available.", variant: "default" });
+      } finally {
+        setGeneratingSummary(false);
+      }
+    };
+    generate();
+  }, [isSummaryStep, assessmentId, assessmentFingerprint]);
+
   // Default new questions to "target" level
   if (!isSummaryStep && !responses[currentStep]) {
     setResponses((prev) => ({
@@ -401,14 +439,17 @@ export const PortfolioReviewWizard = ({
                 Loading...
               </div>
             ) : isSummaryStep ? (
-              <WizardSummary
-                categories={categories}
-                questions={summaryQuestions}
-                responses={navResponses}
-                onNavigate={handleNavigate}
-                overallImpression={overallImpression}
-                onOverallImpressionChange={setOverallImpression}
-              />
+              <div className="space-y-6">
+                <CandidateAssessmentSummary aiSummary={generatedSummary} aiSummaryLoading={generatingSummary} />
+                <WizardSummary
+                  categories={categories}
+                  questions={summaryQuestions}
+                  responses={navResponses}
+                  onNavigate={handleNavigate}
+                  overallImpression={overallImpression}
+                  onOverallImpressionChange={setOverallImpression}
+                />
+              </div>
             ) : (
               <div key={currentStep} className="animate-fade-up space-y-4">
                 {/* Competency Area Header */}

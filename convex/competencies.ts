@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("competencies")
       .withIndex("by_orderIndex")
@@ -14,6 +16,7 @@ export const list = query({
 export const listSubCompetencies = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("subCompetencies")
       .withIndex("by_orderIndex")
@@ -24,6 +27,7 @@ export const listSubCompetencies = query({
 export const listSubCompetenciesByCompetency = query({
   args: { competencyId: v.id("competencies") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("subCompetencies")
       .withIndex("by_competencyId", (q) => q.eq("competencyId", args.competencyId))
@@ -34,6 +38,7 @@ export const listSubCompetenciesByCompetency = query({
 export const listByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const comps = await ctx.db
       .query("competencies")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
@@ -45,6 +50,7 @@ export const listByRole = query({
 export const listSubCompetenciesByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const comps = await ctx.db
       .query("competencies")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
@@ -67,6 +73,7 @@ export const create = mutation({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("competencies", args);
   },
 });
@@ -80,6 +87,7 @@ export const update = mutation({
     orderIndex: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -88,6 +96,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("competencies") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     // Delete all sub-competencies first
     const subs = await ctx.db
       .query("subCompetencies")
@@ -108,6 +117,7 @@ export const updateOrder = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     for (const update of args.updates) {
       await ctx.db.patch(update.id, { orderIndex: update.orderIndex });
     }
@@ -123,6 +133,7 @@ export const createSub = mutation({
     levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("subCompetencies", {
       competencyId: args.competencyId,
       title: args.title,
@@ -142,6 +153,7 @@ export const updateSub = mutation({
     levelCriteria: v.optional(v.record(v.string(), v.array(v.string()))),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -150,6 +162,7 @@ export const updateSub = mutation({
 export const removeSub = mutation({
   args: { id: v.id("subCompetencies") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     await ctx.db.delete(args.id);
   },
 });
@@ -162,6 +175,7 @@ export const updateSubOrder = mutation({
     })),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     for (const update of args.updates) {
       await ctx.db.patch(update.id, { orderIndex: update.orderIndex });
     }
@@ -185,6 +199,7 @@ export const bulkImport = mutation({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     for (const comp of args.competencies) {
       const { subCompetencies, ...compData } = comp;
       const compId = await ctx.db.insert("competencies", {

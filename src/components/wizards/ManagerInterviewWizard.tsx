@@ -32,6 +32,7 @@ import {
 import { RATING_OPTIONS, RATING_SCORE_MAP } from "@/lib/ratingConstants";
 import { WizardNavigationRail } from "./WizardNavigationRail";
 import { WizardSummary } from "./WizardSummary";
+import { CandidateAssessmentSummary } from "../CandidateAssessmentSummary";
 
 interface ManagerInterviewWizardProps {
   open: boolean;
@@ -64,36 +65,34 @@ export const ManagerInterviewWizard = ({
   const INTERVIEW_QUESTIONS = aiQuestions || FALLBACK_QUESTIONS;
   const categories = getInterviewCategories(INTERVIEW_QUESTIONS);
 
-  // Build display order: group original indices by category
-  const displayOrder = useMemo(() => {
-    const order: number[] = [];
-    for (const cat of categories) {
-      INTERVIEW_QUESTIONS.forEach((q, i) => {
-        if (q.category === cat) order.push(i);
-      });
-    }
-    return order;
+  // Build category steps: one step per category, each containing its questions
+  const categorySteps = useMemo(() => {
+    return categories.map((cat) => ({
+      category: cat,
+      questions: INTERVIEW_QUESTIONS
+        .map((q, i) => ({ origIdx: i, question: q }))
+        .filter((item) => item.question.category === cat),
+    }));
   }, [INTERVIEW_QUESTIONS, categories]);
 
-  // Reverse map: original index → display step
-  const originalToDisplay = useMemo(() => {
-    const map: Record<number, number> = {};
-    displayOrder.forEach((origIdx, displayIdx) => {
-      map[origIdx] = displayIdx;
-    });
-    return map;
-  }, [displayOrder]);
+  const totalSteps = categorySteps.length + 1; // +1 for summary
 
-  const totalSteps = INTERVIEW_QUESTIONS.length + 1; // +1 for summary
-
-  const [currentStep, setCurrentStep] = useState(0); // display step
+  const [currentStep, setCurrentStep] = useState(0); // category step index
   const [responses, setResponses] = useState<Record<number, Response>>({});
   const [assessmentId, setAssessmentId] = useState<string | null>(null);
   const [initializing, setInitializing] = useState(false);
   const [overallImpression, setOverallImpression] = useState("");
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<string | null>(null);
+  const [generatedSummary, setGeneratedSummary] = useState<any>(null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [summaryDataKey, setSummaryDataKey] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Scroll-linked navigation state
+  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const client = useConvex();
   const createDraftMutation = useMutation(api.candidateAssessments.createDraft);
@@ -101,11 +100,17 @@ export const ManagerInterviewWizard = ({
   const upsertResponse = useMutation(api.interviewResponses.upsert);
   const updateGeneratedQuestions = useMutation(api.candidateAssessments.updateGeneratedQuestions);
   const generateInterviewQuestions = useAction(api.ai.generateInterviewQuestions);
+  const generateCandidateAssessmentSummary = useAction(api.ai.generateCandidateAssessmentSummary);
 
-  const isSummaryStep = currentStep === INTERVIEW_QUESTIONS.length;
+  const isSummaryStep = currentStep >= categorySteps.length;
+  const currentCategoryStep = isSummaryStep ? null : categorySteps[currentStep];
 
-  // Current original question index (only valid when not on summary)
-  const origIdx = isSummaryStep ? -1 : displayOrder[currentStep];
+  // Stable fingerprint of rating data for AI summary regeneration detection
+  const assessmentFingerprint = useMemo(() =>
+    categorySteps.flatMap((step) =>
+      step.questions.map((q) => `${q.origIdx}:${responses[q.origIdx]?.rating || ""}`)
+    ).join("|"),
+    [responses, categorySteps]);
 
   // Determine the stage string and stageId for createDraft
   const stageString = stage ? stage._id : "manager_interview";
@@ -114,6 +119,51 @@ export const ManagerInterviewWizard = ({
   // Determine the dialog title
   const dialogTitle = stage ? stage.title : "Manager Interview";
 
+  // --- Scroll-tracking effect ---
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || isSummaryStep || !currentCategoryStep) return;
+
+    const qIds = currentCategoryStep.questions.map((q) => `q-${q.origIdx}`);
+    if (qIds.length <= 1) {
+      setActiveQuestionId(qIds[0] ?? null);
+      return;
+    }
+
+    const updateActive = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      let closest: string | null = null;
+      let closestDist = Infinity;
+      for (const id of qIds) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const dist = Math.abs(el.getBoundingClientRect().top - containerTop);
+        if (dist < closestDist) { closestDist = dist; closest = id; }
+      }
+      setActiveQuestionId(closest);
+    };
+
+    updateActive();
+    container.addEventListener("scroll", updateActive, { passive: true });
+    return () => container.removeEventListener("scroll", updateActive);
+  }, [currentStep, isSummaryStep, currentCategoryStep]);
+
+  // --- Scroll-target effect ---
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const target = scrollTarget;
+    setScrollTarget(null);
+    requestAnimationFrame(() => {
+      if (target === "__top__") {
+        scrollContainerRef.current?.scrollTo(0, 0);
+      } else {
+        const el = document.getElementById(target);
+        if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+      }
+    });
+  }, [scrollTarget]);
+
+  // --- Open/close effect ---
   useEffect(() => {
     if (open) {
       if (existingAssessmentId) {
@@ -129,6 +179,11 @@ export const ManagerInterviewWizard = ({
       setHoveredRating(null);
       setAiQuestions(null);
       setGeneratingQuestions(false);
+      setGeneratedSummary(null);
+      setGeneratingSummary(false);
+      setSummaryDataKey(null);
+      setActiveQuestionId(null);
+      setScrollTarget(null);
     }
   }, [open, existingAssessmentId]);
 
@@ -220,25 +275,25 @@ export const ManagerInterviewWizard = ({
         setOverallImpression(assessment.notes);
       }
 
-      // Navigate to furthest completion point
+      // Navigate to furthest completion point — find first category with an unrated question
       const loadedQuestions = (assessment?.generatedQuestions?.length > 0
         ? assessment.generatedQuestions as InterviewQuestion[]
         : FALLBACK_QUESTIONS);
       const localCategories = getInterviewCategories(loadedQuestions);
-      const localDisplayOrder: number[] = [];
-      for (const cat of localCategories) {
-        loadedQuestions.forEach((q, i) => {
-          if (q.category === cat) localDisplayOrder.push(i);
-        });
-      }
+      const localCategorySteps = localCategories.map((cat) => ({
+        category: cat,
+        questions: loadedQuestions
+          .map((q, i) => ({ origIdx: i, question: q }))
+          .filter((item) => item.question.category === cat),
+      }));
 
       if (assessment?.status === "completed") {
-        setCurrentStep(loadedQuestions.length); // summary step
+        setCurrentStep(localCategorySteps.length); // summary step
       } else {
-        const firstUnrated = localDisplayOrder.findIndex(
-          origIdx => !responseMap[origIdx]?.rating
+        const firstUnratedCategoryIdx = localCategorySteps.findIndex((step) =>
+          step.questions.some((q) => !responseMap[q.origIdx]?.rating)
         );
-        setCurrentStep(firstUnrated === -1 ? loadedQuestions.length : firstUnrated);
+        setCurrentStep(firstUnratedCategoryIdx === -1 ? localCategorySteps.length : firstUnratedCategoryIdx);
       }
 
       setInitializing(false);
@@ -273,45 +328,67 @@ export const ManagerInterviewWizard = ({
     }
   };
 
-  const flushCurrentResponse = async () => {
+  const flushAllDirtyResponses = async () => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const step = currentStepRef.current;
-    if (step < INTERVIEW_QUESTIONS.length) {
-      const oIdx = displayOrder[step];
-      const currentResp = responsesRef.current[oIdx];
-      if (currentResp) {
-        await saveResponse(oIdx, currentResp.responseNotes || "", currentResp.rating);
+    const step = categoryStepsRef.current[currentStepRef.current];
+    if (!step) return;
+    for (const q of step.questions) {
+      const r = responsesRef.current[q.origIdx];
+      if (r) {
+        await saveResponse(q.origIdx, r.responseNotes || "", r.rating);
       }
     }
   };
 
-  // handleNavigate accepts a display step
-  const handleNavigate = async (targetDisplayStep: number) => {
-    if (targetDisplayStep < 0 || targetDisplayStep >= totalSteps) return;
-    await flushCurrentResponse();
-    setCurrentStep(targetDisplayStep);
+  // Called by nav rail dots — supports same-step scrolling and cross-step navigation
+  const handleDotNavigate = async (step: number, subId?: string) => {
+    await flushAllDirtyResponses();
+    const sameStep = step === currentStep;
+    setCurrentStep(step);
     setHoveredRating(null);
+    if (subId && sameStep) {
+      const el = document.getElementById(subId);
+      if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+    } else if (!sameStep) {
+      setScrollTarget(subId ?? "__top__");
+    }
   };
 
-  // Called by nav rail dots — they pass display indices
-  const handleDotNavigate = async (displayIdx: number) => {
-    await handleNavigate(displayIdx);
+  // handleNavigate for summary onNavigate — maps flat question index to category step
+  const handleNavigate = async (flatIdx: number) => {
+    // Find which category step this flat index belongs to
+    let count = 0;
+    for (let stepIdx = 0; stepIdx < categorySteps.length; stepIdx++) {
+      const step = categorySteps[stepIdx];
+      if (flatIdx < count + step.questions.length) {
+        const questionInStep = step.questions[flatIdx - count];
+        const subId = questionInStep ? `q-${questionInStep.origIdx}` : undefined;
+        await handleDotNavigate(stepIdx, subId);
+        return;
+      }
+      count += step.questions.length;
+    }
+    // If beyond all questions, go to summary
+    await handleDotNavigate(categorySteps.length);
   };
 
   const handleNext = async () => {
-    await flushCurrentResponse();
+    await flushAllDirtyResponses();
     if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
+      setScrollTarget("__top__");
       setHoveredRating(null);
     }
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
+    await flushAllDirtyResponses();
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setScrollTarget("__top__");
       setHoveredRating(null);
     }
   };
@@ -327,7 +404,7 @@ export const ManagerInterviewWizard = ({
     }
     setShowIncompleteWarning(false);
 
-    await flushCurrentResponse();
+    await flushAllDirtyResponses();
 
     let totalScore = 0;
     let scored = 0;
@@ -362,7 +439,7 @@ export const ManagerInterviewWizard = ({
     }
   };
 
-  const updateResponse = (field: "responseNotes" | "rating", value: string) => {
+  const updateResponse = (origIdx: number, field: "responseNotes" | "rating", value: string) => {
     if (isSummaryStep) return;
     setResponses((prev) => ({
       ...prev,
@@ -372,109 +449,148 @@ export const ManagerInterviewWizard = ({
         [field]: value,
       },
     }));
+    dirtyRef.current.add(origIdx);
   };
 
   // Debounced auto-save
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const responsesRef = useRef(responses);
   const currentStepRef = useRef(currentStep);
+  const categoryStepsRef = useRef(categorySteps);
+  const dirtyRef = useRef<Set<number>>(new Set());
   responsesRef.current = responses;
   currentStepRef.current = currentStep;
+  categoryStepsRef.current = categorySteps;
 
   const flushSave = useCallback(() => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const step = currentStepRef.current;
-    if (step < INTERVIEW_QUESTIONS.length) {
-      const oIdx = displayOrder[step];
-      const r = responsesRef.current[oIdx];
+    const step = categoryStepsRef.current[currentStepRef.current];
+    if (!step) return;
+    for (const q of step.questions) {
+      const r = responsesRef.current[q.origIdx];
       if (r && assessmentId) {
-        saveResponse(oIdx, r.responseNotes || "", r.rating);
+        saveResponse(q.origIdx, r.responseNotes || "", r.rating);
       }
     }
-  }, [assessmentId, displayOrder]);
+    dirtyRef.current.clear();
+  }, [assessmentId, categorySteps]);
 
+  // Debounced auto-save when responses change
   useEffect(() => {
-    if (isSummaryStep) return;
-    const r = responses[origIdx];
-    if (!r || !assessmentId) return;
+    if (isSummaryStep || !currentCategoryStep || !assessmentId) return;
+    if (dirtyRef.current.size === 0) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      saveResponse(origIdx, r.responseNotes || "", r.rating);
+      const step = categoryStepsRef.current[currentStepRef.current];
+      if (!step) return;
+      for (const origIdx of dirtyRef.current) {
+        const r = responsesRef.current[origIdx];
+        if (r) saveResponse(origIdx, r.responseNotes || "", r.rating);
+      }
+      dirtyRef.current.clear();
       debounceRef.current = null;
     }, 500);
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [responses, origIdx, assessmentId, isSummaryStep]);
+  }, [responses, assessmentId, isSummaryStep, currentCategoryStep]);
 
   // Flush on close
   useEffect(() => {
     return () => { flushSave(); };
   }, [flushSave]);
 
-  // Default new questions to "target" rating
-  if (!isSummaryStep && !generatingQuestions && INTERVIEW_QUESTIONS.length > 0 && origIdx >= 0 && !responses[origIdx]) {
-    setResponses((prev) => ({
-      ...prev,
-      [origIdx]: {
-        questionIndex: origIdx,
-        responseNotes: null,
-        rating: "target",
-      },
-    }));
-  }
+  // AI summary generation on summary step
+  useEffect(() => {
+    if (!isSummaryStep || !assessmentId || generatingSummary) return;
+    if (generatedSummary && summaryDataKey === assessmentFingerprint) return;
 
-  const currentResponse = responses[origIdx] || {
-    questionIndex: origIdx,
-    responseNotes: "",
-    rating: "target",
-  };
+    setGeneratingSummary(true);
+    const generate = async () => {
+      try {
+        await flushAllDirtyResponses();
+        const summary = await generateCandidateAssessmentSummary({
+          assessmentId: assessmentId as Id<"candidateAssessments">,
+          candidateId: candidate._id as Id<"hiringCandidates">,
+        });
+        setGeneratedSummary(summary);
+        setSummaryDataKey(assessmentFingerprint);
+      } catch (error) {
+        console.error("Failed to generate AI assessment summary:", error);
+        toast({ title: "AI Summary", description: "Could not generate AI summary. Manual summary is still available.", variant: "default" });
+      } finally {
+        setGeneratingSummary(false);
+      }
+    };
+    generate();
+  }, [isSummaryStep, assessmentId, assessmentFingerprint]);
 
-  const currentQuestion: InterviewQuestion | undefined = INTERVIEW_QUESTIONS[origIdx];
+  // Default all unrated questions in the current category to "target" rating
+  useEffect(() => {
+    if (isSummaryStep || !currentCategoryStep || generatingQuestions) return;
+    setResponses((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const q of currentCategoryStep.questions) {
+        if (!next[q.origIdx]) {
+          next[q.origIdx] = { questionIndex: q.origIdx, responseNotes: null, rating: "target" };
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [currentStep, isSummaryStep, currentCategoryStep, generatingQuestions]);
 
-  // Find the hint to display: hovered rating or selected rating
-  const activeRatingValue = hoveredRating || currentResponse.rating;
-  const activeHint = activeRatingValue
-    ? RATING_OPTIONS.find((o) => o.value === activeRatingValue)?.hint
-    : null;
-
-  // Current category for dialog title
+  // Current category for dialog header
   const currentCategory = isSummaryStep
     ? "Review"
-    : currentQuestion?.category ?? "";
+    : currentCategoryStep?.category ?? "";
 
-  // Build nav rail data in display order.
-  const navQuestions = displayOrder.map((oIdx) => ({
-    category: INTERVIEW_QUESTIONS[oIdx].category,
-  }));
+  // Build nav rail data: flat list with stepIndex and subId per question
+  const navQuestions = categorySteps.flatMap((step, stepIdx) =>
+    step.questions.map((q) => ({
+      category: step.category,
+      stepIndex: stepIdx,
+      subId: `q-${q.origIdx}`,
+    }))
+  );
   const navResponses: Record<number, { rating: string | null; notes: string | null }> = {};
-  displayOrder.forEach((oIdx, displayIdx) => {
-    const r = responses[oIdx];
-    if (r) {
-      navResponses[displayIdx] = { rating: r.rating, notes: r.responseNotes };
+  let flatIdx = 0;
+  for (const step of categorySteps) {
+    for (const q of step.questions) {
+      const r = responses[q.origIdx];
+      if (r) {
+        navResponses[flatIdx] = { rating: r.rating, notes: r.responseNotes };
+      }
+      flatIdx++;
     }
-  });
+  }
 
-  // Build summary data in display order
-  const summaryQuestions = displayOrder.map((oIdx) => {
-    const q = INTERVIEW_QUESTIONS[oIdx];
-    return {
-      category: q.category,
-      label: q.question.length > 80 ? q.question.slice(0, 77) + "..." : q.question,
-    };
-  });
+  // Build summary data in flat question order across all categories
+  const summaryQuestions = categorySteps.flatMap((step) =>
+    step.questions.map((q) => ({
+      category: step.category,
+      label: q.question.question.length > 80
+        ? q.question.question.slice(0, 77) + "..."
+        : q.question.question,
+    }))
+  );
   const summaryResponses: Record<number, { rating: string | null; notes: string | null }> = {};
-  displayOrder.forEach((oIdx, displayIdx) => {
-    const r = responses[oIdx];
-    if (r) {
-      summaryResponses[displayIdx] = { rating: r.rating, notes: r.responseNotes };
+  let summaryFlatIdx = 0;
+  for (const step of categorySteps) {
+    for (const q of step.questions) {
+      const r = responses[q.origIdx];
+      if (r) {
+        summaryResponses[summaryFlatIdx] = { rating: r.rating, notes: r.responseNotes };
+      }
+      summaryFlatIdx++;
     }
-  });
+  }
 
   return (
     <>
@@ -498,14 +614,24 @@ export const ManagerInterviewWizard = ({
                 questions={navQuestions}
                 responses={navResponses}
                 currentStep={currentStep}
+                activeSubId={activeQuestionId}
                 onNavigate={handleDotNavigate}
                 isSummaryStep={isSummaryStep}
               />
             )}
           </div>
 
+          {/* Category header (outside scroll container — stays fixed for the step) */}
+          {!initializing && !generatingQuestions && !isSummaryStep && currentCategoryStep && (
+            <div className="shrink-0 px-6 pb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {currentCategoryStep.category}
+              </p>
+            </div>
+          )}
+
           {/* Scrollable body */}
-          <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-6">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 px-6 pb-6">
             {initializing || generatingQuestions ? (
               <div className="py-12 text-center text-muted-foreground space-y-3">
                 {generatingQuestions ? (
@@ -524,65 +650,74 @@ export const ManagerInterviewWizard = ({
                 )}
               </div>
             ) : isSummaryStep ? (
-              <WizardSummary
-                categories={categories}
-                questions={summaryQuestions}
-                responses={summaryResponses}
-                onNavigate={handleNavigate}
-                overallImpression={overallImpression}
-                onOverallImpressionChange={setOverallImpression}
-              />
-            ) : (
-              <div key={currentStep} className="animate-fade-up space-y-4">
-                {/* Category header */}
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {currentQuestion.category}
-                </p>
-
-                {/* Question */}
-                <p className="text-lg font-medium">
-                  {currentQuestion.question}
-                </p>
-
-                {/* Rating tabs */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Rating</label>
-                  <Tabs
-                    value={currentResponse.rating || ""}
-                    onValueChange={(value) => updateResponse("rating", value)}
-                    className="w-full"
-                  >
-                    <TabsList className="grid w-full grid-cols-5">
-                      {RATING_OPTIONS.map((opt) => (
-                        <TabsTrigger
-                          key={opt.value}
-                          value={opt.value}
-                          className={`text-xs px-1 ${opt.colorClass}`}
-                          onMouseEnter={() => setHoveredRating(opt.value)}
-                          onMouseLeave={() => setHoveredRating(null)}
-                        >
-                          {opt.label}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </Tabs>
-                  <p className="text-xs text-muted-foreground h-4">
-                    {activeHint ?? "\u00A0"}
-                  </p>
-                </div>
-
-                {/* Notes */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Notes</label>
-                  <Textarea
-                    placeholder={currentQuestion.signal || "Enter observations and notes about the candidate's response..."}
-                    value={currentResponse.responseNotes || ""}
-                    onChange={(e) => updateResponse("responseNotes", e.target.value)}
-                    rows={6}
-                  />
-                </div>
+              <div className="space-y-6">
+                <WizardSummary
+                  categories={categories}
+                  questions={summaryQuestions}
+                  responses={summaryResponses}
+                  onNavigate={handleNavigate}
+                  overallImpression={overallImpression}
+                  onOverallImpressionChange={setOverallImpression}
+                />
+                <CandidateAssessmentSummary aiSummary={generatedSummary} aiSummaryLoading={generatingSummary} />
               </div>
-            )}
+            ) : currentCategoryStep ? (
+              <div key={currentStep} className="animate-fade-up">
+                {currentCategoryStep.questions.map((item) => {
+                  const resp = responses[item.origIdx] || { rating: "target", responseNotes: "" };
+                  const activeRatingValue = hoveredRating || resp.rating;
+                  const activeHint = activeRatingValue
+                    ? RATING_OPTIONS.find((o) => o.value === activeRatingValue)?.hint
+                    : null;
+                  return (
+                    <div key={item.origIdx} id={`q-${item.origIdx}`} className="space-y-4 pb-8">
+                      {/* Question */}
+                      <p className="text-lg font-medium">
+                        {item.question.question}
+                      </p>
+
+                      {/* Rating tabs */}
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Rating</label>
+                        <Tabs
+                          value={resp.rating || ""}
+                          onValueChange={(value) => updateResponse(item.origIdx, "rating", value)}
+                          className="w-full"
+                        >
+                          <TabsList className="grid w-full grid-cols-5">
+                            {RATING_OPTIONS.map((opt) => (
+                              <TabsTrigger
+                                key={opt.value}
+                                value={opt.value}
+                                className={`text-xs px-1 ${opt.colorClass}`}
+                                onMouseEnter={() => setHoveredRating(opt.value)}
+                                onMouseLeave={() => setHoveredRating(null)}
+                              >
+                                {opt.label}
+                              </TabsTrigger>
+                            ))}
+                          </TabsList>
+                        </Tabs>
+                        <p className="text-xs text-muted-foreground h-4">
+                          {activeHint ?? "\u00A0"}
+                        </p>
+                      </div>
+
+                      {/* Notes */}
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Notes</label>
+                        <Textarea
+                          placeholder={item.question.signal || "Enter observations and notes about the candidate's response..."}
+                          value={resp.responseNotes || ""}
+                          onChange={(e) => updateResponse(item.origIdx, "responseNotes", e.target.value)}
+                          rows={4}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           {/* Footer */}
@@ -605,7 +740,7 @@ export const ManagerInterviewWizard = ({
                   </Button>
                 ) : (
                   <Button onClick={handleNext}>
-                    {currentStep === INTERVIEW_QUESTIONS.length - 1 ? "Review" : "Next"}
+                    {currentStep === categorySteps.length - 1 ? "Review" : "Next"}
                     <ChevronRight className="h-4 w-4 ml-2" />
                   </Button>
                 )}

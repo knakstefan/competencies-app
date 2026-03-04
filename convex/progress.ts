@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor } from "./auth.helpers";
 
 export const listForAssessment = query({
   args: { assessmentId: v.id("assessments") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("memberCompetencyProgress")
       .withIndex("by_assessmentId", (q) => q.eq("assessmentId", args.assessmentId))
@@ -14,6 +16,7 @@ export const listForAssessment = query({
 export const listForMember = query({
   args: { memberId: v.id("teamMembers") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("memberCompetencyProgress")
       .withIndex("by_memberId", (q) => q.eq("memberId", args.memberId))
@@ -30,6 +33,7 @@ export const upsert = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // Find existing progress for this assessment + sub-competency
     const existing = await ctx.db
       .query("memberCompetencyProgress")
@@ -76,6 +80,7 @@ export const batchCreate = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const now = new Date().toISOString();
     const ids = [];
     for (const record of args.records) {

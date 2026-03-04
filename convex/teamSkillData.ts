@@ -1,9 +1,11 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth } from "./auth.helpers";
 
 export const getTeamSkillData = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     const [members, competencies, subCompetencies, allAssessments] = await Promise.all([
       ctx.db.query("teamMembers").withIndex("by_name").collect(),
       ctx.db.query("competencies").withIndex("by_orderIndex").collect(),
@@ -63,6 +65,7 @@ export const getTeamSkillData = query({
 export const getTeamSkillDataByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const [members, competencies, allAssessments] = await Promise.all([
       ctx.db
         .query("teamMembers")

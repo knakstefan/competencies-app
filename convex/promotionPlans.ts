@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor } from "./auth.helpers";
 
 export const getLatestForMember = query({
   args: { memberId: v.id("teamMembers") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const plans = await ctx.db
       .query("promotionPlans")
       .withIndex("by_memberId", (q) => q.eq("memberId", args.memberId))
@@ -24,6 +26,7 @@ export const create = mutation({
     generatedBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("promotionPlans", {
       ...args,
       generatedAt: new Date().toISOString(),

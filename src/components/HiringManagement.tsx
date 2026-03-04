@@ -107,6 +107,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
   const navigate = useNavigate();
   const candidates = useQuery(
     roleId ? api.candidates.listWithAssessmentStatusByRole : api.candidates.listWithAssessmentStatus,
+    // @ts-expect-error — conditional query args; safe because listWithAssessmentStatus takes {}
     roleId ? { roleId } : {}
   );
   const stages = useQuery(
@@ -311,7 +312,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
           <div className="flex justify-center mb-6">
             <TabsList>
               <TabsTrigger value="candidates">Candidates</TabsTrigger>
-              {isAdmin && <TabsTrigger value="stages">Pipeline Stages</TabsTrigger>}
+              {isAdmin && <TabsTrigger value="stages">Hiring Stages</TabsTrigger>}
             </TabsList>
           </div>
 
@@ -352,7 +353,10 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                     className="animate-fade-up group"
                     style={{ animationDelay: `${index * 80}ms` }}
                   >
-                    <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
+                    <Card
+                      className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 cursor-pointer"
+                      onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
+                    >
                       <div className="h-0.5 bg-gradient-knak" />
                       <CardContent className="p-5 flex flex-col">
                         {/* Top row: stage badge + actions */}
@@ -363,7 +367,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                           >
                             {resolveLabel(candidate.currentStage)}
                           </Badge>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                             {isAdmin && (
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -421,10 +425,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                         </div>
 
                         {/* Name + target role */}
-                        <h3
-                          className="text-lg font-semibold mb-1 cursor-pointer hover:text-primary transition-colors"
-                          onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
-                        >
+                        <h3 className="text-lg font-semibold mb-1">
                           {candidate.name}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-3">{candidate.targetRole}</p>

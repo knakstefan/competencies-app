@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor } from "./auth.helpers";
 
 export const listForProgress = query({
   args: { progressId: v.id("candidateCompetencyProgress") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("candidateCriteriaEvaluations")
       .withIndex("by_progressId", (q) => q.eq("progressId", args.progressId))
@@ -22,6 +24,7 @@ export const replaceForProgress = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // Delete existing
     const existing = await ctx.db
       .query("candidateCriteriaEvaluations")

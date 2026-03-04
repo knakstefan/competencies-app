@@ -113,13 +113,18 @@ export default {
             opacity: '1',
             transform: 'translateY(0)'
           }
+        },
+        'line-grow': {
+          '0%': { height: '0' },
+          '100%': { height: '100%' }
         }
       },
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',
         'skeleton-pulse': 'skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'fade-up': 'fade-up 0.5s ease-out both'
+        'fade-up': 'fade-up 0.5s ease-out both',
+        'line-grow': 'line-grow 1.2s ease-out 0.2s both'
       },
       animationDelay: {
         '75': '75ms',

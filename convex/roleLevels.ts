@@ -1,7 +1,8 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
-const IC_DEFAULT_LEVELS = [
+export const IC_DEFAULT_LEVELS = [
   { key: "p1_entry", label: "P1 Entry", description: "Early Career", orderIndex: 0 },
   { key: "p2_developing", label: "P2 Developing", description: "Emerging Talent", orderIndex: 1 },
   { key: "p3_career", label: "P3 Career", description: "Fully Competent", orderIndex: 2 },
@@ -9,7 +10,7 @@ const IC_DEFAULT_LEVELS = [
   { key: "p5_principal", label: "P5 Principal", description: "Expert/Authority", orderIndex: 4 },
 ];
 
-const MANAGEMENT_DEFAULT_LEVELS = [
+export const MANAGEMENT_DEFAULT_LEVELS = [
   { key: "m1_team_lead", label: "M1 Team Lead", description: "Tactical Supervision", orderIndex: 0 },
   { key: "m2_manager", label: "M2 Manager", description: "Operational Management", orderIndex: 1 },
   { key: "m3_director", label: "M3 Director", description: "Strategic Management", orderIndex: 2 },
@@ -27,6 +28,7 @@ const OLD_TO_NEW_KEY_MAP: Record<string, string> = {
 export const listByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("roleLevels")
       .withIndex("by_roleId_orderIndex", (q) => q.eq("roleId", args.roleId))
@@ -37,6 +39,7 @@ export const listByRole = query({
 export const get = query({
   args: { id: v.id("roleLevels") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -48,8 +51,10 @@ export const create = mutation({
     label: v.string(),
     description: v.optional(v.string()),
     orderIndex: v.number(),
+    globalLevelId: v.optional(v.id("globalLevels")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("roleLevels", args);
   },
 });
@@ -63,6 +68,7 @@ export const update = mutation({
     orderIndex: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -71,6 +77,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("roleLevels") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     await ctx.db.delete(args.id);
   },
 });
@@ -85,6 +92,7 @@ export const updateOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     for (const update of args.updates) {
       await ctx.db.patch(update.id, { orderIndex: update.orderIndex });
     }
@@ -97,6 +105,7 @@ export const seedDefaultLevels = mutation({
     roleType: v.optional(v.union(v.literal("ic"), v.literal("management"))),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // Idempotent: check if levels already exist for this role
     const existing = await ctx.db
       .query("roleLevels")
@@ -114,6 +123,27 @@ export const seedDefaultLevels = mutation({
       type = role?.type || "ic";
     }
 
+    // Try to seed from global levels first
+    const globalLevels = await ctx.db
+      .query("globalLevels")
+      .withIndex("by_type_orderIndex", (q) => q.eq("type", type!))
+      .collect();
+
+    if (globalLevels.length > 0) {
+      for (const gl of globalLevels) {
+        await ctx.db.insert("roleLevels", {
+          roleId: args.roleId,
+          key: gl.key,
+          label: gl.label,
+          description: gl.description,
+          orderIndex: gl.orderIndex,
+          globalLevelId: gl._id,
+        });
+      }
+      return { message: "Levels seeded from global levels", count: globalLevels.length };
+    }
+
+    // Fall back to hardcoded defaults
     const defaults = type === "management" ? MANAGEMENT_DEFAULT_LEVELS : IC_DEFAULT_LEVELS;
 
     for (const level of defaults) {
@@ -138,6 +168,7 @@ const LEGACY_KEY_TO_COLUMN: Record<string, string> = {
 export const migrateFromHardcoded = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx);
     let rolesSeeded = 0;
     let subsPatched = 0;
 
@@ -192,6 +223,7 @@ export const migrateFromHardcoded = mutation({
 export const migrateKeysToNewFormat = mutation({
   args: {},
   handler: async (ctx) => {
+    await requireAdmin(ctx);
     let subsPatched = 0;
     const oldKeys = Object.keys(OLD_TO_NEW_KEY_MAP);
 
@@ -227,6 +259,7 @@ export const migrateKeysToNewFormat = mutation({
 export const verifyMigration = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     const issues: string[] = [];
 
     // Check every role has roleLevels entries

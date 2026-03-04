@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db
       .query("teamMembers")
       .withIndex("by_name")
@@ -14,6 +16,7 @@ export const list = query({
 export const listWithAssessmentSummary = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     const members = await ctx.db
       .query("teamMembers")
       .withIndex("by_name")
@@ -46,6 +49,7 @@ export const listWithAssessmentSummary = query({
 export const listWithAssessmentSummaryByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const members = await ctx.db
       .query("teamMembers")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
@@ -78,6 +82,7 @@ export const listWithAssessmentSummaryByRole = query({
 export const get = query({
   args: { id: v.id("teamMembers") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -91,6 +96,7 @@ export const create = mutation({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("teamMembers", args);
   },
 });
@@ -103,6 +109,7 @@ export const update = mutation({
     startDate: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -111,6 +118,8 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("teamMembers") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     // Cascade delete: assessments → progress → evaluations
     const assessments = await ctx.db
       .query("assessments")

@@ -3,6 +3,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
+import { requireAuthAction } from "./auth.helpers";
 
 export const inviteUser = action({
   args: {
@@ -10,6 +11,8 @@ export const inviteUser = action({
     role: v.union(v.literal("admin"), v.literal("editor"), v.literal("viewer")),
   },
   handler: async (ctx, args) => {
+    await requireAuthAction(ctx);
+
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 
@@ -41,6 +44,8 @@ export const deleteUser = action({
     userId: v.id("users"),
   },
   handler: async (ctx, args) => {
+    await requireAuthAction(ctx);
+
     const clerkSecretKey = process.env.CLERK_SECRET_KEY;
     if (!clerkSecretKey) throw new Error("CLERK_SECRET_KEY not configured");
 

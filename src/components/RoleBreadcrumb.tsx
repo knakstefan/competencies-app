@@ -17,6 +17,7 @@ const TAB_LABELS: Record<string, string> = {
   competencies: "Competencies",
   team: "Team",
   hiring: "Hiring",
+  "job-description": "Job Description",
 };
 
 export const RoleBreadcrumb = () => {

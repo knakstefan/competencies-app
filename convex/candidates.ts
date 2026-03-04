@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const list = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     return await ctx.db.query("hiringCandidates").collect();
   },
 });
@@ -11,6 +13,7 @@ export const list = query({
 export const listWithAssessmentStatus = query({
   args: {},
   handler: async (ctx) => {
+    await requireAuth(ctx);
     const candidates = await ctx.db.query("hiringCandidates").collect();
 
     return Promise.all(
@@ -37,6 +40,7 @@ export const listWithAssessmentStatus = query({
 export const listWithAssessmentStatusByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const candidates = await ctx.db
       .query("hiringCandidates")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
@@ -66,6 +70,7 @@ export const listWithAssessmentStatusByRole = query({
 export const get = query({
   args: { id: v.id("hiringCandidates") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -82,6 +87,7 @@ export const create = mutation({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // If roleId provided and no explicit currentStage, use the first hiring stage ID
     let defaultStage = args.currentStage || "manager_interview";
     if (args.roleId && !args.currentStage) {
@@ -112,6 +118,7 @@ export const update = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     await ctx.db.patch(id, fields);
   },
@@ -120,6 +127,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("hiringCandidates") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     // Cascade delete all candidate data
     const assessments = await ctx.db
       .query("candidateAssessments")
@@ -174,6 +182,7 @@ export const updateStage = mutation({
     currentStage: v.string(),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     await ctx.db.patch(args.id, { currentStage: args.currentStage });
   },
 });

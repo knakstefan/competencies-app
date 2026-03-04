@@ -28,7 +28,7 @@ export const RATING_OPTIONS: RatingOption[] = [
     value: "target",
     label: "At Target",
     hint: "Meets expectations for the target level",
-    colorClass: "data-[state=active]:bg-zinc-400/20 data-[state=active]:text-zinc-300",
+    colorClass: "data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400",
     dotColor: "bg-blue-500",
     score: 3,
   },

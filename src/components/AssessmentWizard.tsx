@@ -8,9 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronLeft, ChevronRight, Check, Sparkles, ChevronDown } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Check, AlertTriangle } from "lucide-react";
 import { AssessmentSummary } from "./AssessmentSummary";
 import { WizardNavigationRail } from "./wizards/WizardNavigationRail";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,20 +33,53 @@ const RATING_PRIORITY: Record<string, number> = {
   well_below: 1, below: 2, target: 3, above: 4, well_above: 5,
 };
 
-function getWorstRating(evaluations: Record<string, string> | undefined): string | null {
+function getMajorityRating(evaluations: Record<string, string> | undefined): string | null {
   if (!evaluations) return null;
   const values = Object.values(evaluations).filter(Boolean);
   if (values.length === 0) return null;
-  return values.reduce((worst, current) =>
-    (RATING_PRIORITY[current] ?? 3) < (RATING_PRIORITY[worst] ?? 3) ? current : worst
-  );
+
+  let belowCount = 0;
+  let aboveCount = 0;
+  let worstBelow: string | null = null;
+  let bestAbove: string | null = null;
+
+  for (const v of values) {
+    const score = RATING_PRIORITY[v] ?? 3;
+    if (score < 3) {
+      belowCount++;
+      if (!worstBelow || score < (RATING_PRIORITY[worstBelow] ?? 3)) worstBelow = v;
+    } else if (score > 3) {
+      aboveCount++;
+      if (!bestAbove || score > (RATING_PRIORITY[bestAbove] ?? 3)) bestAbove = v;
+    }
+  }
+
+  const majority = values.length / 2;
+  if (belowCount > majority) return worstBelow;
+  if (aboveCount > majority) return bestAbove;
+  return "target";
 }
 
 // --- Interfaces ---
 
-interface GeneratedPrompt {
-  subCompetencyId: string;
-  prompts: Array<{ question: string; lookFor: string }>;
+interface GeneratedSummary {
+  overallNarrative: string;
+  strengths: Array<{ competency: string; detail: string }>;
+  areasNeedingSupport: Array<{
+    competency: string;
+    subCompetency: string;
+    criterion: string;
+    rating: string;
+    currentLevelExpectation: string;
+    nextLevelExpectation: string;
+    guidance: string;
+  }>;
+  overallReadiness: string;
+}
+
+interface CompetencyStep {
+  competency: Competency;
+  subCompetencies: SubCompetency[];
 }
 
 interface AssessmentWizardProps {
@@ -81,9 +114,14 @@ export const AssessmentWizard = ({
   >({});
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(false);
-  const [generatedPrompts, setGeneratedPrompts] = useState<GeneratedPrompt[]>([]);
-  const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [hoveredRating, setHoveredRating] = useState<Record<string, string | null>>({});
+  const [showUnratedWarning, setShowUnratedWarning] = useState(false);
+  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const [activeSubId, setActiveSubId] = useState<string | null>(null);
+  const [generatedSummary, setGeneratedSummary] = useState<GeneratedSummary | null>(null);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [summaryDataKey, setSummaryDataKey] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const client = useConvex();
@@ -91,35 +129,40 @@ export const AssessmentWizard = ({
   const upsertProgress = useMutation(api.progress.upsert);
   const replaceEvals = useMutation(api.evaluations.replaceForProgress);
   const completeAssessment = useMutation(api.assessments.complete);
-  const generateAssessmentPrompts = useAction(api.ai.generateAssessmentPrompts);
+  const generateAssessmentSummaryAction = useAction(api.ai.generateAssessmentSummary);
 
   // --- Computed values ---
 
-  const orderedSubCompetencies = useMemo(() =>
-    [...subCompetencies].sort((a, b) => {
-      const compA = competencies.find((c) => c._id === a.competencyId);
-      const compB = competencies.find((c) => c._id === b.competencyId);
-      if (compA && compB && compA.orderIndex !== compB.orderIndex) {
-        return compA.orderIndex - compB.orderIndex;
-      }
-      return a.orderIndex - b.orderIndex;
-    }),
-    [subCompetencies, competencies]
-  );
+  // Group sub-competencies by competency to create steps
+  const competencySteps = useMemo((): CompetencyStep[] => {
+    const sortedComps = [...competencies].sort((a, b) => a.orderIndex - b.orderIndex);
+    return sortedComps.map((comp) => ({
+      competency: comp,
+      subCompetencies: [...subCompetencies]
+        .filter((sc) => sc.competencyId === comp._id)
+        .sort((a, b) => a.orderIndex - b.orderIndex),
+    })).filter((step) => step.subCompetencies.length > 0);
+  }, [competencies, subCompetencies]);
 
-  const totalSteps = orderedSubCompetencies.length + 1; // +1 for summary
-  const isSummaryStep = currentStep >= orderedSubCompetencies.length;
+  const totalSteps = competencySteps.length + 1; // +1 for summary
+  const isSummaryStep = currentStep >= competencySteps.length;
   const memberLevelKey = labelToKey(levels, memberRole);
 
-  const currentSubCompetency = !isSummaryStep ? orderedSubCompetencies[currentStep] : null;
-  const currentCompetency = currentSubCompetency
-    ? competencies.find((c) => c._id === currentSubCompetency.competencyId)
-    : null;
-  const currentData = currentSubCompetency ? assessmentData[currentSubCompetency._id] : null;
-  const targetCriteria = currentSubCompetency
-    ? getCriteriaForLevelWithFallback(currentSubCompetency, memberLevelKey)
-    : [];
+  const currentCompetencyStep = !isSummaryStep ? competencySteps[currentStep] : null;
   const hasAboveOption = sharedGetLevelAbove(levels, memberLevelKey) !== null;
+
+  // Stable fingerprint of evaluation data — used to detect changes for AI summary regeneration
+  const assessmentFingerprint = useMemo(() => {
+    return Object.entries(assessmentData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, data]) => {
+        const evals = data.evaluations
+          ? Object.entries(data.evaluations).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => `${k}=${v}`).join(",")
+          : "";
+        return `${id}:${evals}`;
+      })
+      .join("|");
+  }, [assessmentData]);
 
   // Level navigation helpers
   const getLevelNBelow = (level: string, n: number): string | null => sharedGetLevelNBelow(levels, level, n);
@@ -136,54 +179,66 @@ export const AssessmentWizard = ({
   };
 
   // Hint for a specific criterion at a specific rating
-  const getHintForCriterion = (criterionIndex: number, ratingValue: string): string => {
+  const getHintForCriterion = (sub: SubCompetency, criterionIndex: number, ratingValue: string): string => {
     const genericHint = RATING_OPTIONS.find(o => o.value === ratingValue)?.hint || "";
-    if (ratingValue === "target" || !currentSubCompetency) return genericHint;
+    if (ratingValue === "target") return genericHint;
     const hintLevel = getDisplayLevel(ratingValue, memberLevelKey);
     if (!hintLevel) return genericHint;
-    const hintCriteria = getCriteriaForLevelWithFallback(currentSubCompetency, hintLevel);
+    const hintCriteria = getCriteriaForLevelWithFallback(sub, hintLevel);
     const hintText = hintCriteria[criterionIndex];
     if (hintText) return `${keyToLabel(levels, hintLevel)}: ${hintText}`;
     return genericHint;
   };
 
-  // --- Nav rail data adapter ---
-
-  const navCategories = useMemo(() => {
-    const seen = new Set<string>();
-    const cats: string[] = [];
-    for (const sub of orderedSubCompetencies) {
-      const comp = competencies.find(c => c._id === sub.competencyId);
-      const title = comp?.title || "Unknown";
-      if (!seen.has(title)) {
-        seen.add(title);
-        cats.push(title);
+  // Count unrated criteria in the current step
+  const getUnratedCount = useCallback((): number => {
+    if (!currentCompetencyStep) return 0;
+    let unrated = 0;
+    for (const sub of currentCompetencyStep.subCompetencies) {
+      const criteria = getCriteriaForLevelWithFallback(sub, memberLevelKey);
+      const evals = assessmentData[sub._id]?.evaluations || {};
+      for (const c of criteria) {
+        if (!evals[c]) unrated++;
       }
     }
-    return cats;
-  }, [orderedSubCompetencies, competencies]);
+    return unrated;
+  }, [currentCompetencyStep, assessmentData, memberLevelKey]);
 
-  const navQuestions = useMemo(() =>
-    orderedSubCompetencies.map(sub => {
-      const comp = competencies.find(c => c._id === sub.competencyId);
-      return { category: comp?.title || "Unknown" };
-    }),
-    [orderedSubCompetencies, competencies]
+  // --- Nav rail data adapter ---
+
+  const navCategories = useMemo(() =>
+    competencySteps.map((step) => step.competency.title),
+    [competencySteps]
   );
+
+  // One "question" per sub-competency, tagged with parent competency and step index
+  const navQuestions = useMemo(() => {
+    const questions: { category: string; stepIndex: number; subId: string }[] = [];
+    competencySteps.forEach((step, stepIdx) => {
+      for (const sub of step.subCompetencies) {
+        questions.push({ category: step.competency.title, stepIndex: stepIdx, subId: sub._id });
+      }
+    });
+    return questions;
+  }, [competencySteps]);
 
   const navResponses = useMemo(() => {
     const result: Record<number, { rating: string | null; notes: string | null }> = {};
-    orderedSubCompetencies.forEach((sub, idx) => {
-      const data = assessmentData[sub._id];
-      if (data) {
-        result[idx] = {
-          rating: getWorstRating(data.evaluations),
-          notes: data.notes || null,
-        };
+    let questionIdx = 0;
+    competencySteps.forEach((step) => {
+      for (const sub of step.subCompetencies) {
+        const data = assessmentData[sub._id];
+        if (data) {
+          const rating = getMajorityRating(data.evaluations);
+          if (rating) {
+            result[questionIdx] = { rating, notes: data.notes ? "yes" : null };
+          }
+        }
+        questionIdx++;
       }
     });
     return result;
-  }, [orderedSubCompetencies, assessmentData]);
+  }, [competencySteps, assessmentData]);
 
   // --- Debounce refs ---
 
@@ -227,27 +282,33 @@ export const AssessmentWizard = ({
     }
   };
 
+  // Save all sub-competencies for a given competency step
+  const saveStepProgress = useCallback(async (stepIndex: number) => {
+    if (stepIndex >= competencySteps.length || !assessmentId) return;
+    const step = competencySteps[stepIndex];
+    const data = assessmentDataRef.current;
+    for (const sub of step.subCompetencies) {
+      const subData = data[sub._id];
+      if (subData) {
+        await saveProgressToDatabase(
+          assessmentId,
+          sub._id as Id<"subCompetencies">,
+          subData.level,
+          subData.notes,
+          subData.evaluations,
+        );
+      }
+    }
+  }, [assessmentId, competencySteps]);
+
   // Flush current step's data to DB (awaitable)
   const flushCurrentProgress = useCallback(async () => {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const step = currentStepRef.current;
-    if (step < orderedSubCompetencies.length && assessmentId) {
-      const sub = orderedSubCompetencies[step];
-      const data = assessmentDataRef.current[sub._id];
-      if (data) {
-        await saveProgressToDatabase(
-          assessmentId,
-          sub._id as Id<"subCompetencies">,
-          data.level,
-          data.notes,
-          data.evaluations,
-        );
-      }
-    }
-  }, [assessmentId, orderedSubCompetencies]);
+    await saveStepProgress(currentStepRef.current);
+  }, [saveStepProgress]);
 
   // Fire-and-forget version for cleanup effects
   const flushSave = useCallback(() => {
@@ -255,49 +316,112 @@ export const AssessmentWizard = ({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const step = currentStepRef.current;
-    if (step < orderedSubCompetencies.length && assessmentId) {
-      const sub = orderedSubCompetencies[step];
-      const data = assessmentDataRef.current[sub._id];
-      if (data) {
-        saveProgressToDatabase(
-          assessmentId,
-          sub._id as Id<"subCompetencies">,
-          data.level,
-          data.notes,
-          data.evaluations,
-        );
-      }
-    }
-  }, [assessmentId, orderedSubCompetencies]);
+    saveStepProgress(currentStepRef.current);
+  }, [saveStepProgress]);
 
   // --- Debounced auto-save effect ---
 
-  const currentSubId = currentSubCompetency?._id ?? null;
-  const currentStepData = currentSubId ? assessmentData[currentSubId] : null;
+  // Build a stable key for the current step's data to trigger debounced saves
+  const currentStepDataKey = useMemo(() => {
+    if (isSummaryStep || !currentCompetencyStep) return null;
+    return currentCompetencyStep.subCompetencies
+      .map((sub) => JSON.stringify(assessmentData[sub._id] || null))
+      .join("|");
+  }, [isSummaryStep, currentCompetencyStep, assessmentData]);
 
   useEffect(() => {
-    if (!currentSubId || !currentStepData || !assessmentId) return;
+    if (!currentStepDataKey || !assessmentId) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      saveProgressToDatabase(
-        assessmentId,
-        currentSubId as Id<"subCompetencies">,
-        currentStepData.level,
-        currentStepData.notes,
-        currentStepData.evaluations,
-      );
+      saveStepProgress(currentStepRef.current);
       debounceRef.current = null;
     }, 500);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [currentStepData, currentSubId, assessmentId]);
+  }, [currentStepDataKey, assessmentId, saveStepProgress]);
 
   // Flush on unmount / assessmentId change
   useEffect(() => {
     return () => { flushSave(); };
   }, [flushSave]);
+
+  // Scroll after step render: to a specific sub-competency, or to the top
+  useEffect(() => {
+    if (!scrollTarget) return;
+    const target = scrollTarget;
+    setScrollTarget(null);
+    requestAnimationFrame(() => {
+      if (target === "__top__") {
+        scrollContainerRef.current?.scrollTo(0, 0);
+      } else {
+        const el = document.getElementById(`sub-${target}`);
+        if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+      }
+    });
+  }, [scrollTarget]);
+
+  // Track which sub-competency is closest to the top of the scroll container
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || isSummaryStep || !currentCompetencyStep) return;
+
+    const subIds = currentCompetencyStep.subCompetencies.map((s) => s._id);
+    if (subIds.length <= 1) {
+      setActiveSubId(subIds[0] ?? null);
+      return;
+    }
+
+    const updateActive = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      let closest: string | null = null;
+      let closestDist = Infinity;
+      for (const id of subIds) {
+        const el = document.getElementById(`sub-${id}`);
+        if (!el) continue;
+        const dist = Math.abs(el.getBoundingClientRect().top - containerTop);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = id;
+        }
+      }
+      setActiveSubId(closest);
+    };
+
+    updateActive();
+    container.addEventListener("scroll", updateActive, { passive: true });
+    return () => container.removeEventListener("scroll", updateActive);
+  }, [currentStep, isSummaryStep, currentCompetencyStep]);
+
+  // --- AI summary generation on summary step ---
+
+  useEffect(() => {
+    if (!isSummaryStep || !assessmentId || generatingSummary) return;
+
+    // Summary exists and was generated from this exact data — nothing to do
+    if (generatedSummary && summaryDataKey === assessmentFingerprint) return;
+
+    // Data has changed (or first visit) — generate a fresh summary
+    setGeneratingSummary(true);
+    const generate = async () => {
+      try {
+        const summary = await generateAssessmentSummaryAction({
+          memberId: memberId as Id<"teamMembers">,
+          assessmentId,
+          roleId: roleId ? (roleId as Id<"roles">) : undefined,
+        });
+        setGeneratedSummary(summary as GeneratedSummary);
+        setSummaryDataKey(assessmentFingerprint);
+      } catch (error) {
+        console.error("Failed to generate AI assessment summary:", error);
+        toast({ title: "AI Summary", description: "Could not generate AI summary. Static summary is still available.", variant: "default" });
+      } finally {
+        setGeneratingSummary(false);
+      }
+    };
+
+    generate();
+  }, [isSummaryStep, assessmentId, assessmentFingerprint]);
 
   // --- Open/close effect ---
 
@@ -314,9 +438,13 @@ export const AssessmentWizard = ({
       setCurrentStep(0);
       setAssessmentId(null);
       setAssessmentData({});
-      setGeneratedPrompts([]);
-      setGeneratingPrompts(false);
       setHoveredRating({});
+      setShowUnratedWarning(false);
+      setScrollTarget(null);
+      setActiveSubId(null);
+      setGeneratedSummary(null);
+      setGeneratingSummary(false);
+      setSummaryDataKey(null);
     }
   }, [open, existingAssessmentId]);
 
@@ -330,28 +458,11 @@ export const AssessmentWizard = ({
       });
       setAssessmentId(newId);
       await loadPreviousAssessmentData(newId);
-      generateAndStorePrompts(newId);
     } catch (error) {
       console.error("Error creating assessment:", error);
       toast({ title: "Error", description: "Failed to create assessment", variant: "destructive" });
     } finally {
       setInitializing(false);
-    }
-  };
-
-  const generateAndStorePrompts = async (assessId: Id<"assessments">) => {
-    setGeneratingPrompts(true);
-    try {
-      const prompts = await generateAssessmentPrompts({
-        memberId: memberId as Id<"teamMembers">,
-        assessmentId: assessId,
-        roleId: roleId ? (roleId as Id<"roles">) : undefined,
-      });
-      setGeneratedPrompts(prompts);
-    } catch (error) {
-      console.error("Failed to generate AI assessment prompts:", error);
-    } finally {
-      setGeneratingPrompts(false);
     }
   };
 
@@ -409,10 +520,6 @@ export const AssessmentWizard = ({
     setInitializing(true);
     try {
       const assessment = await client.query(api.assessments.getById, { id });
-      if (assessment?.generatedPrompts) {
-        setGeneratedPrompts(assessment.generatedPrompts);
-      }
-
       const progressData = await client.query(
         api.progress.listForAssessment,
         { assessmentId: id }
@@ -437,12 +544,16 @@ export const AssessmentWizard = ({
 
       // Navigate to furthest completion point
       if (assessment?.status === "completed") {
-        setCurrentStep(orderedSubCompetencies.length); // summary step
+        setCurrentStep(competencySteps.length); // summary step
       } else {
-        const firstIncomplete = orderedSubCompetencies.findIndex(
-          sub => !loadedData[sub._id]?.evaluations || Object.keys(loadedData[sub._id]?.evaluations || {}).length === 0
+        // Find first competency step with incomplete sub-competencies
+        const firstIncomplete = competencySteps.findIndex((step) =>
+          step.subCompetencies.some((sub) => {
+            const data = loadedData[sub._id];
+            return !data?.evaluations || Object.keys(data.evaluations).length === 0;
+          })
         );
-        setCurrentStep(firstIncomplete === -1 ? orderedSubCompetencies.length : firstIncomplete);
+        setCurrentStep(firstIncomplete === -1 ? competencySteps.length : firstIncomplete);
       }
     } catch (error) {
       console.error("Error loading assessment:", error);
@@ -454,60 +565,87 @@ export const AssessmentWizard = ({
 
   // --- Event handlers ---
 
-  const handleEvaluationChange = (criterion: string, evaluation: string) => {
-    if (!currentSubCompetency) return;
-    const level = currentData?.level || memberLevelKey;
-    const newEvaluations = { ...(currentData?.evaluations || {}), [criterion]: evaluation };
+  const handleEvaluationChange = (subCompetencyId: string, criterion: string, evaluation: string) => {
+    const existingData = assessmentData[subCompetencyId];
+    const level = existingData?.level || memberLevelKey;
+    const newEvaluations = { ...(existingData?.evaluations || {}), [criterion]: evaluation };
     setAssessmentData(prev => ({
       ...prev,
-      [currentSubCompetency._id]: { level, notes: currentData?.notes, evaluations: newEvaluations },
+      [subCompetencyId]: { level, notes: existingData?.notes, evaluations: newEvaluations },
     }));
   };
 
-  const handleNotesChange = (notes: string) => {
-    if (!currentSubCompetency) return;
-    const level = currentData?.level || memberLevelKey;
+  const handleNotesChange = (subCompetencyId: string, notes: string) => {
+    const existingData = assessmentData[subCompetencyId];
+    const level = existingData?.level || memberLevelKey;
     setAssessmentData(prev => ({
       ...prev,
-      [currentSubCompetency._id]: { level, notes, evaluations: currentData?.evaluations },
+      [subCompetencyId]: { level, notes, evaluations: existingData?.evaluations },
     }));
   };
 
-  const handleDotNavigate = async (step: number) => {
-    await flushCurrentProgress();
+  const handleDotNavigate = (step: number, subId?: string) => {
+    flushSave();
+    const sameStep = step === currentStep;
     setCurrentStep(step);
     setHoveredRating({});
+    setShowUnratedWarning(false);
+    if (subId && sameStep) {
+      const el = document.getElementById(`sub-${subId}`);
+      if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
+    } else if (!sameStep) {
+      setScrollTarget(subId ?? "__top__");
+    }
   };
 
   const handleNext = async () => {
     if (currentStep < totalSteps - 1) {
-      // Set default "target" for unevaluated criteria
-      if (currentSubCompetency && targetCriteria.length > 0) {
-        const currentEvals = assessmentData[currentSubCompetency._id]?.evaluations || {};
-        const hasUnevaluated = targetCriteria.some(c => !currentEvals[c]);
-        if (hasUnevaluated) {
-          const updatedEvals = { ...currentEvals };
-          targetCriteria.forEach(c => { if (!updatedEvals[c]) updatedEvals[c] = "target"; });
-          const newEntry = {
-            level: assessmentData[currentSubCompetency._id]?.level || memberLevelKey,
-            notes: assessmentData[currentSubCompetency._id]?.notes,
-            evaluations: updatedEvals,
-          };
-          setAssessmentData(prev => ({ ...prev, [currentSubCompetency._id]: newEntry }));
-          // Update ref manually so flush reads the defaults
-          assessmentDataRef.current = { ...assessmentDataRef.current, [currentSubCompetency._id]: newEntry };
+      // Check for unrated criteria
+      const unratedCount = getUnratedCount();
+      if (unratedCount > 0 && !showUnratedWarning) {
+        setShowUnratedWarning(true);
+        return;
+      }
+
+      // Fill defaults for unrated criteria if proceeding past warning
+      if (currentCompetencyStep) {
+        let dataChanged = false;
+        const newData = { ...assessmentData };
+        for (const sub of currentCompetencyStep.subCompetencies) {
+          const criteria = getCriteriaForLevelWithFallback(sub, memberLevelKey);
+          const currentEvals = newData[sub._id]?.evaluations || {};
+          const hasUnevaluated = criteria.some(c => !currentEvals[c]);
+          if (hasUnevaluated) {
+            const updatedEvals = { ...currentEvals };
+            criteria.forEach(c => { if (!updatedEvals[c]) updatedEvals[c] = "target"; });
+            newData[sub._id] = {
+              level: newData[sub._id]?.level || memberLevelKey,
+              notes: newData[sub._id]?.notes,
+              evaluations: updatedEvals,
+            };
+            dataChanged = true;
+          }
+        }
+        if (dataChanged) {
+          setAssessmentData(newData);
+          assessmentDataRef.current = newData;
         }
       }
+
       await flushCurrentProgress();
       setCurrentStep(currentStep + 1);
+      setScrollTarget("__top__");
       setHoveredRating({});
+      setShowUnratedWarning(false);
     }
   };
 
   const handleBack = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      setScrollTarget("__top__");
       setHoveredRating({});
+      setShowUnratedWarning(false);
     }
   };
 
@@ -516,9 +654,22 @@ export const AssessmentWizard = ({
     setLoading(true);
     try {
       await flushCurrentProgress();
-      const totalSubCompetencies = subCompetencies.length;
-      const assessedCount = Object.keys(assessmentData).length;
-      const overallScore = (assessedCount / totalSubCompetencies) * 100;
+      const evalScores: Record<string, number> = {
+        well_above: 5, above: 4, target: 3, below: 2, well_below: 1,
+      };
+      let totalScore = 0;
+      let totalEvals = 0;
+      for (const data of Object.values(assessmentData)) {
+        if (data.evaluations) {
+          for (const evaluation of Object.values(data.evaluations)) {
+            if (evaluation && evalScores[evaluation] != null) {
+              totalScore += evalScores[evaluation];
+              totalEvals++;
+            }
+          }
+        }
+      }
+      const overallScore = totalEvals > 0 ? totalScore / totalEvals : 0;
 
       await completeAssessment({ id: assessmentId, overallScore });
       toast({ title: "Success", description: "Assessment completed successfully" });
@@ -540,14 +691,21 @@ export const AssessmentWizard = ({
         onClose();
       }
     }}>
-      <DialogContent className="max-w-3xl max-h-[90vh] p-0 flex flex-col gap-0">
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0 flex flex-col gap-0">
         {/* Gradient top border */}
         <div className="h-1 bg-gradient-knak shrink-0" />
 
         {/* Header */}
-        <div className="shrink-0 px-6 pt-4 pb-3 space-y-4">
+        <div className="shrink-0 px-6 pt-5 pb-3 space-y-4">
           <DialogHeader>
-            <DialogTitle>Team Assessment — {memberName}</DialogTitle>
+            <div className="flex items-center justify-between pr-8">
+              <DialogTitle className="text-xl">Team Assessment — {memberName}</DialogTitle>
+              {!initializing && !isSummaryStep && (
+                <span className="text-sm text-muted-foreground whitespace-nowrap">
+                  Step {currentStep + 1} of {totalSteps}{currentCompetencyStep ? ` — ${currentCompetencyStep.competency.title}` : ""}
+                </span>
+              )}
+            </div>
           </DialogHeader>
           {!initializing && (
             <WizardNavigationRail
@@ -555,6 +713,7 @@ export const AssessmentWizard = ({
               questions={navQuestions}
               responses={navResponses}
               currentStep={currentStep}
+              activeSubId={activeSubId}
               onNavigate={handleDotNavigate}
               isSummaryStep={isSummaryStep}
             />
@@ -562,7 +721,7 @@ export const AssessmentWizard = ({
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto min-h-0 px-6 pb-6">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 px-6 pb-6">
           {initializing ? (
             <div className="py-12 text-center text-muted-foreground space-y-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary mx-auto" />
@@ -573,125 +732,145 @@ export const AssessmentWizard = ({
               competencies={competencies}
               subCompetencies={subCompetencies}
               assessmentData={assessmentData}
+              aiSummary={generatedSummary}
+              aiSummaryLoading={generatingSummary}
             />
-          ) : currentSubCompetency ? (
-            <div key={currentStep} className="animate-fade-up space-y-4">
-              {/* Category header */}
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {currentCompetency?.title}
-              </p>
+          ) : currentCompetencyStep ? (
+            <div key={currentStep} className="animate-fade-up space-y-6">
+              {/* Sub-competency sections */}
+              {currentCompetencyStep.subCompetencies.map((sub) => {
+                const subData = assessmentData[sub._id];
+                const criteria = getCriteriaForLevelWithFallback(sub, memberLevelKey);
 
-              {/* Sub-competency title */}
-              <p className="text-lg font-medium">{currentSubCompetency.title}</p>
+                return (
+                  <div key={sub._id} id={`sub-${sub._id}`} className="space-y-4">
+                    {/* Sub-competency heading */}
+                    <div className="border-b border-border/50 pb-2">
+                      <p className="text-base font-medium">{sub.title}</p>
+                    </div>
 
-              {/* AI Discussion Prompts */}
-              {(() => {
-                const currentPrompts = generatedPrompts.find(
-                  (p) => p.subCompetencyId === currentSubCompetency._id
-                );
-                if (generatingPrompts) {
-                  return (
-                    <Card className="border-primary/20 bg-primary/5">
-                      <CardContent className="pt-6">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          <Sparkles className="h-4 w-4 text-primary" />
-                          <span>Generating AI discussion prompts...</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                }
-                if (currentPrompts && currentPrompts.prompts.length > 0) {
-                  return (
-                    <Collapsible defaultOpen>
-                      <Card className="border-primary/20">
-                        <CardContent className="pt-4 pb-4">
-                          <CollapsibleTrigger className="flex items-center gap-2 w-full text-left group">
-                            <Sparkles className="h-4 w-4 text-primary shrink-0" />
-                            <span className="text-sm font-medium flex-1">AI Discussion Prompts</span>
-                            <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="mt-3 space-y-3">
-                            {currentPrompts.prompts.map((prompt, i) => (
-                              <div key={i} className="pl-6 space-y-1">
-                                <p className="text-sm font-medium">{prompt.question}</p>
-                                <p className="text-xs text-muted-foreground">{prompt.lookFor}</p>
-                              </div>
-                            ))}
-                          </CollapsibleContent>
-                        </CardContent>
-                      </Card>
-                    </Collapsible>
-                  );
-                }
-                return null;
-              })()}
+                    {/* Per-criterion blocks */}
+                    {criteria.length > 0 && (
+                      <div className="space-y-4">
+                        {criteria.map((criterion, index) => {
+                          const currentEvaluation = subData?.evaluations?.[criterion] || null;
+                          const activeRating = hoveredRating[`${sub._id}-${criterion}`] || currentEvaluation;
+                          const hint = activeRating ? getHintForCriterion(sub, index, activeRating) : "";
 
-              {/* Per-criterion blocks */}
-              {targetCriteria.length > 0 && (
-                <div className="space-y-4">
-                  {targetCriteria.map((criterion, index) => {
-                    const currentEvaluation = currentData?.evaluations?.[criterion] || "target";
-                    const activeRating = hoveredRating[criterion] || currentEvaluation;
-                    const hint = getHintForCriterion(index, activeRating);
+                          return (
+                            <div key={index} className="space-y-1.5">
+                              {/* Static criterion text */}
+                              <p className="text-sm font-medium">{criterion}</p>
 
-                    return (
-                      <div key={index} className="space-y-1.5">
-                        {/* Static criterion text */}
-                        <p className="text-sm font-medium">{criterion}</p>
-
-                        {/* Rating tabs */}
-                        <Tabs
-                          value={currentEvaluation}
-                          onValueChange={(value) => handleEvaluationChange(criterion, value)}
-                          className="w-full"
-                        >
-                          <TabsList className="grid w-full grid-cols-5">
-                            {RATING_OPTIONS.map((opt) => (
-                              <TabsTrigger
-                                key={opt.value}
-                                value={opt.value}
-                                className={cn("text-xs px-1", opt.colorClass)}
-                                disabled={
-                                  (opt.value === "above" || opt.value === "well_above") && !hasAboveOption
-                                }
-                                onMouseEnter={() =>
-                                  setHoveredRating(prev => ({ ...prev, [criterion]: opt.value }))
-                                }
-                                onMouseLeave={() =>
-                                  setHoveredRating(prev => ({ ...prev, [criterion]: null }))
-                                }
+                              {/* Rating tabs */}
+                              <Tabs
+                                value={currentEvaluation || ""}
+                                onValueChange={(value) => handleEvaluationChange(sub._id, criterion, value)}
+                                className="w-full"
                               >
-                                {opt.label}
-                              </TabsTrigger>
-                            ))}
-                          </TabsList>
-                        </Tabs>
+                                <TabsList className="grid w-full grid-cols-5 bg-muted/60 border border-border/50">
+                                  {RATING_OPTIONS.map((opt) => (
+                                    <TabsTrigger
+                                      key={opt.value}
+                                      value={opt.value}
+                                      className={cn(
+                                        "text-xs px-1",
+                                        opt.colorClass,
+                                        !currentEvaluation && "opacity-50",
+                                      )}
+                                      disabled={
+                                        (opt.value === "above" || opt.value === "well_above") && !hasAboveOption
+                                      }
+                                      onMouseEnter={() =>
+                                        setHoveredRating(prev => ({ ...prev, [`${sub._id}-${criterion}`]: opt.value }))
+                                      }
+                                      onMouseLeave={() =>
+                                        setHoveredRating(prev => ({ ...prev, [`${sub._id}-${criterion}`]: null }))
+                                      }
+                                    >
+                                      {opt.label}
+                                    </TabsTrigger>
+                                  ))}
+                                </TabsList>
+                              </Tabs>
 
-                        {/* Hint line */}
-                        <p className="text-xs text-muted-foreground h-4">
-                          {hint || "\u00A0"}
-                        </p>
+                              {/* Hint line */}
+                              <p className="text-xs text-muted-foreground min-h-4">
+                                {hint || "\u00A0"}
+                              </p>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                    )}
 
-              {/* Notes */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notes</label>
-                <Textarea
-                  value={currentData?.notes || ""}
-                  onChange={(e) => handleNotesChange(e.target.value)}
-                  placeholder="Add notes about this assessment..."
-                  rows={3}
-                />
-              </div>
+                    {/* Notes */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Notes</label>
+                      <Textarea
+                        value={subData?.notes || ""}
+                        onChange={(e) => handleNotesChange(sub._id, e.target.value)}
+                        placeholder={`Notes for ${sub.title}...`}
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           ) : null}
         </div>
+
+        {/* Unrated warning */}
+        {showUnratedWarning && (
+          <div className="shrink-0 mx-6 mb-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center gap-3">
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            <p className="text-sm text-amber-200 flex-1">
+              {getUnratedCount()} criteria not yet rated — they'll default to At Target.
+            </p>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setShowUnratedWarning(false)}>
+                Go Back
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                setShowUnratedWarning(false);
+                // Force proceed by calling handleNext again (warning already shown)
+                const proceed = async () => {
+                  if (currentCompetencyStep) {
+                    let dataChanged = false;
+                    const newData = { ...assessmentData };
+                    for (const sub of currentCompetencyStep.subCompetencies) {
+                      const criteria = getCriteriaForLevelWithFallback(sub, memberLevelKey);
+                      const currentEvals = newData[sub._id]?.evaluations || {};
+                      const hasUnevaluated = criteria.some(c => !currentEvals[c]);
+                      if (hasUnevaluated) {
+                        const updatedEvals = { ...currentEvals };
+                        criteria.forEach(c => { if (!updatedEvals[c]) updatedEvals[c] = "target"; });
+                        newData[sub._id] = {
+                          level: newData[sub._id]?.level || memberLevelKey,
+                          notes: newData[sub._id]?.notes,
+                          evaluations: updatedEvals,
+                        };
+                        dataChanged = true;
+                      }
+                    }
+                    if (dataChanged) {
+                      setAssessmentData(newData);
+                      assessmentDataRef.current = newData;
+                    }
+                  }
+                  await flushCurrentProgress();
+                  setCurrentStep(prev => prev + 1);
+                  setScrollTarget("__top__");
+                  setHoveredRating({});
+                };
+                proceed();
+              }}>
+                Skip
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         {!initializing && (
@@ -713,7 +892,7 @@ export const AssessmentWizard = ({
                 </Button>
               ) : (
                 <Button onClick={handleNext} disabled={initializing}>
-                  {currentStep === orderedSubCompetencies.length - 1 ? "Review" : "Next"}
+                  {currentStep === competencySteps.length - 1 ? "Review" : "Next"}
                   <ChevronRight className="h-4 w-4 ml-2" />
                 </Button>
               )}

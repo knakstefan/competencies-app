@@ -247,7 +247,10 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
               className="animate-fade-up group"
               style={{ animationDelay: `${index * 80}ms` }}
             >
-              <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5">
+              <Card
+                className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 cursor-pointer"
+                onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}
+              >
                 <div className="h-0.5 bg-gradient-knak" />
                 <CardContent className="p-5 flex flex-col">
                   {/* Top row: role badge + actions */}
@@ -255,7 +258,7 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
                     <Badge variant="outline" className="text-xs">
                       {member.role}
                     </Badge>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                       {isAdmin && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -295,10 +298,7 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
                   </div>
 
                   {/* Name */}
-                  <h3
-                    className="text-lg font-semibold mb-1 cursor-pointer hover:text-primary transition-colors"
-                    onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}
-                  >
+                  <h3 className="text-lg font-semibold mb-1">
                     {member.name}
                   </h3>
                   <p className="text-sm text-muted-foreground mb-3">

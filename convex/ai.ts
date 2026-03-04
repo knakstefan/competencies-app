@@ -3,7 +3,9 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
+import { requireAuthAction } from "./auth.helpers";
+import { IC_DEFAULT_LEVELS, MANAGEMENT_DEFAULT_LEVELS } from "./roleLevels";
 
 export const generatePromotionPlan = action({
   args: {
@@ -11,6 +13,7 @@ export const generatePromotionPlan = action({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args): Promise<{ planId: string; planContent: any }> => {
+    await requireAuthAction(ctx);
     // Fetch all data server-side
     const member: any = await ctx.runQuery(api.teamMembers.get, {
       id: args.memberId,
@@ -158,6 +161,7 @@ export const generatePromotionPlan = action({
       const trend = trendingData.find((t) => t.competencyId === comp._id);
 
       return {
+        _id: comp._id,
         title: comp.title,
         code: comp.code,
         subCompetencies: subs,
@@ -165,26 +169,51 @@ export const generatePromotionPlan = action({
       };
     });
 
-    // Derive role level keys from role type
-    const IC_LEVEL_KEYS = ["p1_entry", "p2_developing", "p3_career", "p4_advanced", "p5_principal"];
-    const MANAGEMENT_LEVEL_KEYS = ["m1_team_lead", "m2_manager", "m3_director", "m4_senior_director"];
-    let roleLevelKeys = IC_LEVEL_KEYS;
+    // Derive role levels from role type
+    const IC_LEVELS = [
+      { key: "p1_entry", label: "P1 Entry" },
+      { key: "p2_developing", label: "P2 Developing" },
+      { key: "p3_career", label: "P3 Career" },
+      { key: "p4_advanced", label: "P4 Advanced" },
+      { key: "p5_principal", label: "P5 Principal" },
+    ];
+    const MANAGEMENT_LEVELS = [
+      { key: "m1_team_lead", label: "M1 Team Lead" },
+      { key: "m2_manager", label: "M2 Manager" },
+      { key: "m3_director", label: "M3 Director" },
+      { key: "m4_senior_director", label: "M4 Senior Director" },
+    ];
+    const OLD_TO_NEW_KEY: Record<string, string> = {
+      associate: "p1_entry",
+      intermediate: "p2_developing",
+      senior: "p3_career",
+      lead: "p4_advanced",
+      principal: "p5_principal",
+    };
+    let roleLevels = IC_LEVELS;
     if (args.roleId) {
       const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
       if (role?.type === "management") {
-        roleLevelKeys = MANAGEMENT_LEVEL_KEYS;
+        roleLevels = MANAGEMENT_LEVELS;
       }
     }
+    const roleLevelKeys = roleLevels.map((l) => l.key);
 
     // Calculate role progression path
-    const currentRoleLower = member.role.toLowerCase();
-    const currentRoleIndex = roleLevelKeys.indexOf(currentRoleLower);
-    const targetRole =
+    // member.role is a display label like "P3 Career" — normalize to key format
+    let currentLevelKey = member.role.toLowerCase().replace(/\s+/g, "_");
+    if (!roleLevelKeys.includes(currentLevelKey)) {
+      // Try legacy mapping (e.g., "senior" → "p3_career")
+      currentLevelKey = OLD_TO_NEW_KEY[currentLevelKey] || currentLevelKey;
+    }
+    const currentRoleIndex = roleLevelKeys.indexOf(currentLevelKey);
+    const targetIndex =
       currentRoleIndex >= 0 && currentRoleIndex < roleLevelKeys.length - 1
-        ? roleLevelKeys[currentRoleIndex + 1]
+        ? currentRoleIndex + 1
         : currentRoleIndex >= 0
-          ? roleLevelKeys[currentRoleIndex]
-          : currentRoleLower;
+          ? currentRoleIndex
+          : -1;
+    const targetRole = targetIndex >= 0 ? roleLevels[targetIndex].label : member.role;
 
     // Build AI prompt
     const systemPrompt = `You are an expert career development advisor for product designers.
@@ -281,29 +310,27 @@ REQUIREMENTS:
 - Be professional but encouraging
 - Reference trends in the summary when available`;
 
-    // Call OpenAI GPT-4o
-    const client = new OpenAI();
+    // Call Anthropic Claude
+    const client = new Anthropic();
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
+    const response = await client.messages.create({
+      model: "claude-opus-4-6",
       max_tokens: 4096,
-      response_format: { type: "json_object" },
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
     });
 
-    const planContent = response.choices[0]?.message?.content;
+    const planContent = response.content[0]?.type === "text" ? response.content[0].text : null;
     if (!planContent) {
-      throw new Error("No text response from OpenAI");
+      throw new Error("No text response from Anthropic");
     }
 
     // Parse the JSON response
     let planStructure;
     try {
-      // With response_format: json_object, the response should be clean JSON,
-      // but handle code fences as a safety net
+      // Handle code fences that Claude may wrap around JSON
       const jsonMatch =
         planContent.match(/```json\s*([\s\S]*?)\s*```/) ||
         planContent.match(/```\s*([\s\S]*?)\s*```/);
@@ -357,6 +384,194 @@ REQUIREMENTS:
   },
 });
 
+export const generateJobDescription = action({
+  args: {
+    roleId: v.id("roles"),
+    levelKey: v.string(),
+    levelLabel: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await requireAuthAction(ctx);
+
+    // Fetch role, levels, competencies, sub-competencies
+    const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
+    if (!role) throw new Error("Role not found");
+
+    let roleLevels: any[] = await ctx.runQuery(api.roleLevels.listByRole, {
+      roleId: args.roleId,
+    });
+
+    // Fall back to hardcoded defaults if no DB levels exist
+    if (roleLevels.length === 0) {
+      const defaults = role.type === "management" ? MANAGEMENT_DEFAULT_LEVELS : IC_DEFAULT_LEVELS;
+      roleLevels = defaults.map((l: any) => ({ ...l, roleId: args.roleId }));
+    }
+
+    // Validate the selected level exists
+    const selectedLevel = roleLevels.find((l: any) => l.key === args.levelKey);
+    if (!selectedLevel) throw new Error("Selected level not found for this role");
+
+    const competencies: any[] = await ctx.runQuery(api.competencies.listByRole, {
+      roleId: args.roleId,
+    });
+    const subCompetencies: any[] = await ctx.runQuery(
+      api.competencies.listSubCompetenciesByRole,
+      { roleId: args.roleId }
+    );
+
+    // Build competency framework context with level-specific criteria
+    const frameworkData = competencies.map((comp: any) => {
+      const subs = subCompetencies
+        .filter((s: any) => s.competencyId === comp._id)
+        .map((sub: any) => {
+          let criteria: string[] = [];
+          if (sub.levelCriteria && sub.levelCriteria[args.levelKey]) {
+            criteria = sub.levelCriteria[args.levelKey];
+          }
+          return {
+            title: sub.title,
+            criteria,
+          };
+        })
+        .filter((s: any) => s.criteria.length > 0);
+
+      return {
+        competency: comp.title,
+        description: comp.description || "",
+        subCompetencies: subs,
+      };
+    }).filter((c: any) => c.subCompetencies.length > 0);
+
+    // Guard: if zero criteria exist for the selected level
+    const totalCriteria = frameworkData.reduce(
+      (sum: number, c: any) =>
+        sum + c.subCompetencies.reduce((s: number, sub: any) => s + sub.criteria.length, 0),
+      0
+    );
+    if (totalCriteria === 0) {
+      throw new Error(
+        `No competency criteria found for level "${args.levelLabel}". Please add criteria to your competency framework for this level before generating a job description.`
+      );
+    }
+
+    // Build career ladder context
+    const careerLadder = roleLevels
+      .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
+      .map((l: any) => `${l.label}${l.description ? ` — ${l.description}` : ""}`)
+      .join("\n");
+
+    const systemPrompt = `You are an expert technical recruiter who writes compelling, accurate job descriptions for design roles. You ground every requirement and responsibility in the provided competency framework — never invent skills or requirements that aren't supported by the framework data. Write in inclusive, bias-free language. Do not include compensation, benefits, or company-specific perks.`;
+
+    const userPrompt = `Generate a structured job description for the following role and level.
+
+ROLE: ${role.title}
+TYPE: ${role.type === "ic" ? "Individual Contributor" : "Management"}
+${role.description ? `ROLE DESCRIPTION: ${role.description}` : ""}
+
+TARGET LEVEL: ${args.levelLabel}
+${selectedLevel.description ? `LEVEL DESCRIPTION: ${selectedLevel.description}` : ""}
+
+CAREER LADDER (for context on where this level sits):
+${careerLadder}
+
+COMPETENCY FRAMEWORK (criteria specific to the ${args.levelLabel} level):
+${JSON.stringify(frameworkData, null, 2)}
+
+Return ONLY valid JSON matching this exact structure:
+
+{
+  "title": "Job title (e.g. Senior Product Designer)",
+  "summary": "3-4 sentence role overview that describes what this person does, the impact they have, and what makes this level distinct",
+  "responsibilities": ["8-12 bullet items grounded in the competency criteria above"],
+  "requirements": ["6-10 bullet items describing must-have skills and experience"],
+  "niceToHave": ["3-5 bullet items for preferred qualifications"],
+  "competencyExpectations": [
+    { "competency": "Competency area name", "expectation": "1-2 sentences summarizing what is expected at this level" }
+  ],
+  "levelContext": "1-2 sentences describing where this level sits in the career ladder and what distinguishes it from adjacent levels"
+}
+
+REQUIREMENTS:
+- Ground responsibilities and requirements in the actual competency criteria provided — do not invent skills
+- Write responsibilities as action-oriented statements starting with verbs
+- Requirements should reflect the level of experience and skill depth implied by the criteria
+- Nice-to-have items can extend slightly beyond the framework but should stay relevant
+- competencyExpectations should have one entry per competency area provided
+- Use inclusive, bias-free language throughout
+- Do not include compensation, benefits, or company-specific information
+- Keep the tone professional yet approachable`;
+
+    const client = new Anthropic();
+
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    if (!content) throw new Error("No text response from Anthropic");
+
+    // Parse JSON response (same code-fence stripping pattern)
+    let parsed;
+    try {
+      const jsonMatch =
+        content.match(/```json\s*([\s\S]*?)\s*```/) ||
+        content.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonStr = jsonMatch ? jsonMatch[1] : content;
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        try {
+          parsed = JSON.parse(objectMatch[0]);
+        } catch {
+          parsed = null;
+        }
+      }
+      if (!parsed) {
+        throw new Error("Failed to parse AI response as JSON. Please try again.");
+      }
+    }
+
+    // Validate/sanitize fields
+    const jdContent = {
+      title: String(parsed.title || `${args.levelLabel} ${role.title}`),
+      summary: String(parsed.summary || ""),
+      responsibilities: Array.isArray(parsed.responsibilities)
+        ? parsed.responsibilities.map(String).filter((s: string) => s.length > 0)
+        : [],
+      requirements: Array.isArray(parsed.requirements)
+        ? parsed.requirements.map(String).filter((s: string) => s.length > 0)
+        : [],
+      niceToHave: Array.isArray(parsed.niceToHave)
+        ? parsed.niceToHave.map(String).filter((s: string) => s.length > 0)
+        : [],
+      competencyExpectations: Array.isArray(parsed.competencyExpectations)
+        ? parsed.competencyExpectations
+            .map((ce: any) => ({
+              competency: String(ce.competency || ""),
+              expectation: String(ce.expectation || ""),
+            }))
+            .filter((ce: any) => ce.competency.length > 0)
+        : [],
+      levelContext: String(parsed.levelContext || ""),
+    };
+
+    // Upsert into jobDescriptions table
+    await ctx.runMutation(api.jobDescriptions.upsert, {
+      roleId: args.roleId,
+      levelKey: args.levelKey,
+      levelLabel: args.levelLabel,
+      content: jdContent,
+      generatedBy: identity.subject,
+    });
+
+    return jdContent;
+  },
+});
+
 export const generateAssessmentPrompts = action({
   args: {
     memberId: v.id("teamMembers"),
@@ -364,6 +579,7 @@ export const generateAssessmentPrompts = action({
     roleId: v.optional(v.id("roles")),
   },
   handler: async (ctx, args): Promise<Array<{ subCompetencyId: string; prompts: Array<{ question: string; lookFor: string }> }>> => {
+    await requireAuthAction(ctx);
     const member: any = await ctx.runQuery(api.teamMembers.get, { id: args.memberId });
     if (!member) throw new Error("Member not found");
 
@@ -455,22 +671,24 @@ ${frameworkJson}
 
 Generate 2-3 discussion prompts per sub-competency that help the manager evaluate performance against these specific criteria.`;
 
-    const client = new OpenAI();
+    const client = new Anthropic();
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
+    const response = await client.messages.create({
+      model: "claude-opus-4-6",
       max_tokens: 3000,
-      response_format: { type: "json_object" },
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("No response from OpenAI");
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    if (!content) throw new Error("No response from Anthropic");
 
-    const parsed = JSON.parse(content);
+    // Strip code fences if present
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+    const jsonStr = jsonMatch ? jsonMatch[1] : content;
+    const parsed = JSON.parse(jsonStr);
     const promptGroups = parsed.prompts;
     if (!Array.isArray(promptGroups)) throw new Error("Invalid prompts format");
 
@@ -492,6 +710,232 @@ Generate 2-3 discussion prompts per sub-competency that help the manager evaluat
   },
 });
 
+export const generateAssessmentSummary = action({
+  args: {
+    memberId: v.id("teamMembers"),
+    assessmentId: v.id("assessments"),
+    roleId: v.optional(v.id("roles")),
+  },
+  handler: async (ctx, args) => {
+    await requireAuthAction(ctx);
+
+    const member: any = await ctx.runQuery(api.teamMembers.get, { id: args.memberId });
+    if (!member) throw new Error("Member not found");
+
+    const competencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.list, {});
+    const subCompetencies: any[] = args.roleId
+      ? await ctx.runQuery(api.competencies.listSubCompetenciesByRole, { roleId: args.roleId })
+      : await ctx.runQuery(api.competencies.listSubCompetencies, {});
+
+    // Fetch progress and evaluations for this assessment
+    const progress: any[] = await ctx.runQuery(api.progress.listForAssessment, {
+      assessmentId: args.assessmentId,
+    });
+    const progressIds = progress.map((p: any) => p._id);
+    let evaluations: any[] = [];
+    if (progressIds.length > 0) {
+      evaluations = await ctx.runQuery(api.evaluations.listForProgressIds, { progressIds });
+    }
+
+    // Determine role type and level keys
+    let roleType = "ic";
+    if (args.roleId) {
+      const role: any = await ctx.runQuery(api.roles.get, { id: args.roleId });
+      if (role?.type === "management") roleType = "management";
+    }
+
+    const IC_LEVEL_KEYS = ["p1_entry", "p2_developing", "p3_career", "p4_advanced", "p5_principal"];
+    const MGMT_LEVEL_KEYS = ["m1_team_lead", "m2_manager", "m3_director", "m4_senior_director"];
+    const levelKeys = roleType === "management" ? MGMT_LEVEL_KEYS : IC_LEVEL_KEYS;
+
+    const NEW_TO_OLD: Record<string, string> = {
+      p1_entry: "associate", p2_developing: "intermediate", p3_career: "senior",
+      p4_advanced: "lead", p5_principal: "principal",
+    };
+
+    const memberLevelKey = member.role.toLowerCase().replace(/\s+/g, "_");
+    const memberLevelIndex = levelKeys.indexOf(memberLevelKey);
+    const nextLevelKey = memberLevelIndex >= 0 && memberLevelIndex < levelKeys.length - 1
+      ? levelKeys[memberLevelIndex + 1]
+      : null;
+
+    // Helper to get criteria for a level from a sub-competency
+    function getCriteria(sub: any, key: string): string[] {
+      if (sub.levelCriteria) {
+        if (sub.levelCriteria[key]) return sub.levelCriteria[key];
+        const mapped = NEW_TO_OLD[key];
+        if (mapped && sub.levelCriteria[mapped]) return sub.levelCriteria[mapped];
+      }
+      return [];
+    }
+
+    const evalToScore: Record<string, number> = {
+      well_above: 5, above: 4, target: 3, below: 2, well_below: 1,
+    };
+
+    const evalToLabel: Record<string, string> = {
+      well_above: "Well Above", above: "Above", target: "At Target",
+      below: "Below", well_below: "Well Below",
+    };
+
+    // Build per-competency scores and collect below-target items
+    const competencyScores: Array<{ competency: string; avgScore: number; totalCriteria: number }> = [];
+    const belowTargetItems: Array<{
+      competency: string; subCompetency: string; criterion: string;
+      rating: string; currentLevelCriteria: string[]; nextLevelCriteria: string[];
+    }> = [];
+
+    for (const comp of competencies) {
+      const compSubs = subCompetencies.filter((s: any) => s.competencyId === comp._id);
+      let compScoreTotal = 0;
+      let compEvalCount = 0;
+
+      for (const sub of compSubs) {
+        const subProgress = progress.find((p: any) => p.subCompetencyId === sub._id);
+        if (!subProgress) continue;
+
+        const subEvals = evaluations.filter((e: any) => e.progressId === subProgress._id);
+
+        for (const ev of subEvals) {
+          const score = evalToScore[ev.evaluation] || 3;
+          compScoreTotal += score;
+          compEvalCount++;
+
+          if (ev.evaluation === "below" || ev.evaluation === "well_below") {
+            belowTargetItems.push({
+              competency: comp.title,
+              subCompetency: sub.title,
+              criterion: ev.criterionText,
+              rating: evalToLabel[ev.evaluation] || ev.evaluation,
+              currentLevelCriteria: getCriteria(sub, memberLevelKey),
+              nextLevelCriteria: nextLevelKey ? getCriteria(sub, nextLevelKey) : [],
+            });
+          }
+        }
+      }
+
+      if (compEvalCount > 0) {
+        competencyScores.push({
+          competency: comp.title,
+          avgScore: Math.round((compScoreTotal / compEvalCount) * 100) / 100,
+          totalCriteria: compEvalCount,
+        });
+      }
+    }
+
+    // Build AI prompt
+    const levelProgression = levelKeys.join(" → ");
+    const currentLevelLabel = memberLevelKey;
+    const nextLevelLabel = nextLevelKey || "(max level — no next level)";
+
+    const systemPrompt = `You are an expert design management coach. Analyze assessment data and generate a concise, actionable summary.
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "overallNarrative": "3-4 sentence paragraph summarizing the assessment results, key strengths, and development priorities",
+  "strengths": [
+    { "competency": "Competency name", "detail": "1-2 sentences on why this is a strength" }
+  ],
+  "areasNeedingSupport": [
+    {
+      "competency": "Competency name",
+      "subCompetency": "Sub-competency name",
+      "criterion": "The specific criterion text",
+      "rating": "Below or Well Below",
+      "currentLevelExpectation": "What is expected at the current level for this area",
+      "nextLevelExpectation": "What the next level requires for this area",
+      "guidance": "2-3 sentences of actionable advice referencing both current and next level expectations"
+    }
+  ],
+  "overallReadiness": "1-2 sentence assessment of readiness for the next level"
+}
+
+IMPORTANT RULES:
+- For strengths, identify the top 2-3 competency areas based on highest average scores
+- For areasNeedingSupport, include ONLY items that were rated Below or Well Below — do not invent items
+- If there are no below-target items, return an empty areasNeedingSupport array
+- For each below-target item, guidance MUST reference both what the current level expects AND what the next level requires
+- If the member is at the maximum level (no next level), frame guidance around mastery and mentoring others instead of advancement
+- Keep all text concise and actionable`;
+
+    const userPrompt = `Generate an assessment summary for ${member.name}, currently at level "${currentLevelLabel}".
+
+LEVEL PROGRESSION: ${levelProgression}
+CURRENT LEVEL: ${currentLevelLabel}
+NEXT LEVEL: ${nextLevelLabel}
+
+COMPETENCY SCORES (5-point scale where 3 = At Target):
+${JSON.stringify(competencyScores, null, 2)}
+
+${belowTargetItems.length > 0 ? `BELOW-TARGET ITEMS (${belowTargetItems.length} total):
+${JSON.stringify(belowTargetItems, null, 2)}` : "No below-target items — all criteria are at or above target."}
+
+Generate the assessment summary JSON.`;
+
+    const client = new Anthropic();
+
+    const response = await client.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    if (!content) throw new Error("No response from Anthropic");
+
+    // Parse JSON response
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+    const jsonStr = jsonMatch ? jsonMatch[1] : content;
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        parsed = JSON.parse(objectMatch[0]);
+      } else {
+        throw new Error("Failed to parse AI response as JSON");
+      }
+    }
+
+    // Validate and sanitize
+    const summary = {
+      overallNarrative: String(parsed.overallNarrative || "Assessment summary generated."),
+      strengths: Array.isArray(parsed.strengths)
+        ? parsed.strengths.map((s: any) => ({
+            competency: String(s.competency || ""),
+            detail: String(s.detail || ""),
+          })).filter((s: any) => s.competency.length > 0)
+        : [],
+      areasNeedingSupport: Array.isArray(parsed.areasNeedingSupport)
+        ? parsed.areasNeedingSupport.map((a: any) => ({
+            competency: String(a.competency || ""),
+            subCompetency: String(a.subCompetency || ""),
+            criterion: String(a.criterion || ""),
+            rating: String(a.rating || ""),
+            currentLevelExpectation: String(a.currentLevelExpectation || ""),
+            nextLevelExpectation: String(a.nextLevelExpectation || ""),
+            guidance: String(a.guidance || ""),
+          })).filter((a: any) => a.competency.length > 0)
+        : [],
+      overallReadiness: String(parsed.overallReadiness || ""),
+    };
+
+    // Store on the assessment record
+    await ctx.runMutation(api.assessments.updateGeneratedSummary, {
+      id: args.assessmentId,
+      generatedSummary: summary,
+    });
+
+    return summary;
+  },
+});
+
 export const generateInterviewQuestions = action({
   args: {
     stageId: v.id("hiringStages"),
@@ -499,6 +943,7 @@ export const generateInterviewQuestions = action({
     roleId: v.id("roles"),
   },
   handler: async (ctx, args): Promise<Array<{ category: string; question: string; signal: string }>> => {
+    await requireAuthAction(ctx);
     // Fetch stage, candidate, role, and competency framework
     const stage: any = await ctx.runQuery(api.hiringStages.get, { id: args.stageId });
     if (!stage) throw new Error("Stage not found");
@@ -557,23 +1002,25 @@ ${frameworkSummary}
 
 Generate questions that probe the candidate's abilities relevant to this stage and their target level of "${candidate.targetRole}".`;
 
-    const client = new OpenAI();
+    const client = new Anthropic();
 
-    const response = await client.chat.completions.create({
-      model: "gpt-4o",
+    const response = await client.messages.create({
+      model: "claude-opus-4-6",
       max_tokens: 2048,
-      response_format: { type: "json_object" },
+      system: systemPrompt,
       messages: [
-        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) throw new Error("No response from OpenAI");
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    if (!content) throw new Error("No response from Anthropic");
 
     try {
-      const parsed = JSON.parse(content);
+      // Strip code fences if present
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+      const jsonStr = jsonMatch ? jsonMatch[1] : content;
+      const parsed = JSON.parse(jsonStr);
       const questions = parsed.questions;
       if (!Array.isArray(questions) || questions.length === 0) {
         throw new Error("Invalid questions format");
@@ -587,5 +1034,220 @@ Generate questions that probe the candidate's abilities relevant to this stage a
     } catch {
       throw new Error("Failed to parse AI-generated questions");
     }
+  },
+});
+
+export const generateCandidateAssessmentSummary = action({
+  args: {
+    assessmentId: v.id("candidateAssessments"),
+    candidateId: v.id("hiringCandidates"),
+  },
+  handler: async (ctx, args) => {
+    await requireAuthAction(ctx);
+
+    const assessment: any = await ctx.runQuery(api.candidateAssessments.getById, {
+      id: args.assessmentId,
+    });
+    if (!assessment) throw new Error("Assessment not found");
+
+    const candidate: any = await ctx.runQuery(api.candidates.get, {
+      id: args.candidateId,
+    });
+    if (!candidate) throw new Error("Candidate not found");
+
+    // Fetch both response types — only one will have data
+    const interviewResponses: any[] = await ctx.runQuery(
+      api.interviewResponses.listForAssessment,
+      { assessmentId: args.assessmentId }
+    );
+    const portfolioResponses: any[] = await ctx.runQuery(
+      api.portfolioResponses.listForAssessment,
+      { assessmentId: args.assessmentId }
+    );
+
+    const isInterview = interviewResponses.length > 0;
+    const assessmentType = isInterview ? "Manager Interview" : "Portfolio Review";
+
+    // Normalize responses to common shape
+    type NormalizedResponse = {
+      category: string;
+      question: string;
+      rating: string;
+      notes: string;
+    };
+
+    const ratingScoreMap: Record<string, number> = {
+      well_above: 5, above: 4, target: 3, below: 2, well_below: 1,
+    };
+
+    const ratingLabelMap: Record<string, string> = {
+      well_above: "Well Above", above: "Above", target: "At Target",
+      below: "Below", well_below: "Well Below",
+    };
+
+    let normalized: NormalizedResponse[] = [];
+
+    if (isInterview) {
+      // Build category lookup from assessment.generatedQuestions
+      const categoryByIndex: Record<number, string> = {};
+      if (assessment.generatedQuestions) {
+        assessment.generatedQuestions.forEach((q: any, i: number) => {
+          categoryByIndex[i] = q.category || "General";
+        });
+      }
+
+      normalized = interviewResponses.map((r: any) => ({
+        category: categoryByIndex[r.questionIndex] || "General",
+        question: r.questionText || "",
+        rating: r.rating || "target",
+        notes: r.responseNotes || "",
+      }));
+    } else {
+      normalized = portfolioResponses.map((r: any) => ({
+        category: r.competencyArea || "General",
+        question: r.questionText || "",
+        rating: r.competencyLevel || "target",
+        notes: r.responseNotes || "",
+      }));
+    }
+
+    // Compute per-category average scores
+    const categoryScores: Record<string, { total: number; count: number }> = {};
+    const belowTargetItems: NormalizedResponse[] = [];
+
+    for (const resp of normalized) {
+      const score = ratingScoreMap[resp.rating] || 3;
+      if (!categoryScores[resp.category]) {
+        categoryScores[resp.category] = { total: 0, count: 0 };
+      }
+      categoryScores[resp.category].total += score;
+      categoryScores[resp.category].count++;
+
+      if (resp.rating === "below" || resp.rating === "well_below") {
+        belowTargetItems.push(resp);
+      }
+    }
+
+    const categoryAvgs = Object.entries(categoryScores).map(([cat, { total, count }]) => ({
+      category: cat,
+      avgScore: Math.round((total / count) * 100) / 100,
+      count,
+    }));
+
+    // Build AI prompt
+    const systemPrompt = `You are an expert hiring evaluator analyzing ${assessmentType.toLowerCase()} data for a candidate.
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "overallNarrative": "3-4 sentence paragraph summarizing the candidate's performance, key strengths, and any concerns",
+  "strengths": [
+    { "area": "Category or skill area", "detail": "1-2 sentences on why this is a strength" }
+  ],
+  "concerns": [
+    {
+      "area": "Category or skill area",
+      "question": "The specific question where the concern was noted",
+      "rating": "Below or Well Below",
+      "observation": "1-2 sentences explaining the concern and what was missing"
+    }
+  ],
+  "hiringRecommendation": "One of: Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire"
+}
+
+IMPORTANT RULES:
+- For strengths, identify the top 2-3 areas based on highest average scores and strongest notes
+- For concerns, include ONLY items rated Below or Well Below — do not invent items
+- If there are no below-target items, return an empty concerns array
+- The hiringRecommendation should follow this rubric:
+  - Strong Hire: Average >= 4.0, no below-target items
+  - Hire: Average >= 3.5, minimal below-target items
+  - Lean Hire: Average >= 3.0, some below-target items
+  - Lean No Hire: Average >= 2.5 or several below-target items
+  - No Hire: Average < 2.5 or many critical below-target items
+- Keep all text concise and actionable`;
+
+    const allResponses = normalized.map((r) => ({
+      category: r.category,
+      question: r.question,
+      rating: ratingLabelMap[r.rating] || r.rating,
+      notes: r.notes,
+    }));
+
+    const userPrompt = `Generate a hiring assessment summary for candidate "${candidate.name}" applying for "${candidate.targetRole}".
+
+ASSESSMENT TYPE: ${assessmentType}
+
+CATEGORY SCORES (5-point scale where 3 = At Target):
+${JSON.stringify(categoryAvgs, null, 2)}
+
+ALL RESPONSES (${normalized.length} total):
+${JSON.stringify(allResponses, null, 2)}
+
+${belowTargetItems.length > 0 ? `BELOW-TARGET ITEMS (${belowTargetItems.length} total):
+${JSON.stringify(belowTargetItems.map((r) => ({
+  category: r.category,
+  question: r.question,
+  rating: ratingLabelMap[r.rating] || r.rating,
+  notes: r.notes,
+})), null, 2)}` : "No below-target items — all responses are at or above target."}
+
+Generate the hiring assessment summary JSON.`;
+
+    const client = new Anthropic();
+
+    const response = await client.messages.create({
+      model: "claude-opus-4-6",
+      max_tokens: 3000,
+      system: systemPrompt,
+      messages: [
+        { role: "user", content: userPrompt },
+      ],
+    });
+
+    const content = response.content[0]?.type === "text" ? response.content[0].text : null;
+    if (!content) throw new Error("No response from Anthropic");
+
+    // Parse JSON response
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+    const jsonStr = jsonMatch ? jsonMatch[1] : content;
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        parsed = JSON.parse(objectMatch[0]);
+      } else {
+        throw new Error("Failed to parse AI response as JSON");
+      }
+    }
+
+    // Validate and sanitize
+    const summary = {
+      overallNarrative: String(parsed.overallNarrative || "Assessment summary generated."),
+      strengths: Array.isArray(parsed.strengths)
+        ? parsed.strengths.map((s: any) => ({
+            area: String(s.area || ""),
+            detail: String(s.detail || ""),
+          })).filter((s: any) => s.area.length > 0)
+        : [],
+      concerns: Array.isArray(parsed.concerns)
+        ? parsed.concerns.map((c: any) => ({
+            area: String(c.area || ""),
+            question: String(c.question || ""),
+            rating: String(c.rating || ""),
+            observation: String(c.observation || ""),
+          })).filter((c: any) => c.area.length > 0)
+        : [],
+      hiringRecommendation: String(parsed.hiringRecommendation || "Lean Hire"),
+    };
+
+    // Store on the assessment record
+    await ctx.runMutation(api.candidateAssessments.updateGeneratedSummary, {
+      id: args.assessmentId,
+      generatedSummary: summary,
+    });
+
+    return summary;
   },
 });

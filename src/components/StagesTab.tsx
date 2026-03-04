@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
@@ -16,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, ChevronUp, ChevronDown, Pencil, Trash2, Sparkles } from "lucide-react";
+import { Plus, ChevronUp, ChevronDown, Pencil, Trash2, Sparkles, ExternalLink } from "lucide-react";
 import { StageEditor } from "./StageEditor";
 
 interface HiringStage {
@@ -104,6 +105,13 @@ export const StagesTab = ({ roleId, stages, isAdmin }: StagesTabProps) => {
 
   return (
     <>
+      <div className="mb-4 rounded-lg border border-border/50 bg-card/50 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+        Default stages are managed globally.
+        <Link to="/pipeline" className="text-primary hover:underline inline-flex items-center gap-1">
+          Manage Pipeline <ExternalLink className="w-3 h-3" />
+        </Link>
+      </div>
+
       <div className="space-y-3">
         {stages.map((stage, index) => (
           <div key={stage._id} className="animate-fade-up" style={{ animationDelay: `${index * 60}ms` }}>

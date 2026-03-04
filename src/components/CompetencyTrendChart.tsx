@@ -61,9 +61,9 @@ export const CompetencyTrendChart = ({ trendData, competencies }: CompetencyTren
   });
 
   // Count improvements and regressions
-  const improvements = competencies.filter((c) => getTrend(c.id) === "up").length;
-  const regressions = competencies.filter((c) => getTrend(c.id) === "down").length;
-  const stable = competencies.filter((c) => getTrend(c.id) === "stable").length;
+  const improvements = competencies.filter((c) => getTrend(c._id) === "up").length;
+  const regressions = competencies.filter((c) => getTrend(c._id) === "down").length;
+  const stable = competencies.filter((c) => getTrend(c._id) === "stable").length;
 
   return (
     <Card className="bg-transparent border-0 p-0">

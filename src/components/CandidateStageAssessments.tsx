@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Check, FileText, Loader2, PlayCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Check, FileText, Loader2, PlayCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HiringCandidate, HiringStage } from "./HiringManagement";
 import { SubCompetency as SubCompetencyType } from "@/types/competency";
@@ -274,6 +274,12 @@ export const CandidateStageAssessments = ({
                           )}
                         </div>
                       </div>
+                      {assessment.generatedSummary?.overallNarrative && (
+                        <div className="mt-4 border-t border-border/50 pt-3 flex gap-2">
+                          <Sparkles className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                          <p className="text-sm text-muted-foreground leading-relaxed">{assessment.generatedSummary.overallNarrative}</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}
@@ -342,6 +348,12 @@ export const CandidateStageAssessments = ({
                           )}
                         </div>
                       </div>
+                      {assessment.generatedSummary?.overallNarrative && (
+                        <div className="mt-3 border-t border-border/50 pt-3 flex gap-2">
+                          <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+                          <p className="text-xs text-muted-foreground leading-relaxed">{assessment.generatedSummary.overallNarrative}</p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}

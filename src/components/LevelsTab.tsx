@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -6,7 +7,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { ViewTab } from "./ViewTab";
 import { RoleLevel } from "@/lib/levelUtils";
 import { Competency, SubCompetency } from "@/types/competency";
@@ -24,6 +25,13 @@ export const LevelsTab = ({ levels, competencies, subCompetencies, loading }: Le
 
   return (
     <>
+      <div className="mb-4 rounded-lg border border-border/50 bg-card/50 px-4 py-3 text-sm text-muted-foreground flex items-center gap-2">
+        Job levels are managed globally.
+        <Link to="/levels" className="text-primary hover:underline inline-flex items-center gap-1">
+          Manage Levels <ExternalLink className="w-3 h-3" />
+        </Link>
+      </div>
+
       <div className="space-y-3">
         {levels.map((level, index) => (
           <div key={level.key} className="animate-fade-up" style={{ animationDelay: `${index * 60}ms` }}>

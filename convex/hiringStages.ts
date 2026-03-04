@@ -1,9 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
 export const listByRole = query({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     const stages = await ctx.db
       .query("hiringStages")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
@@ -15,6 +17,7 @@ export const listByRole = query({
 export const get = query({
   args: { id: v.id("hiringStages") },
   handler: async (ctx, args) => {
+    await requireAuth(ctx);
     return await ctx.db.get(args.id);
   },
 });
@@ -29,8 +32,10 @@ export const create = mutation({
     gateMinScore: v.optional(v.number()),
     gateMinRatedPct: v.optional(v.number()),
     orderIndex: v.number(),
+    globalStageId: v.optional(v.id("globalStages")),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     return await ctx.db.insert("hiringStages", args);
   },
 });
@@ -45,6 +50,7 @@ export const update = mutation({
     gateMinRatedPct: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const { id, ...fields } = args;
     const stage = await ctx.db.get(id);
     if (!stage) throw new Error("Stage not found");
@@ -56,6 +62,7 @@ export const update = mutation({
 export const remove = mutation({
   args: { id: v.id("hiringStages") },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
     await ctx.db.delete(args.id);
   },
 });
@@ -66,6 +73,7 @@ export const reorder = mutation({
     newOrderIndex: v.number(),
   },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     const stage = await ctx.db.get(args.id);
     if (!stage) throw new Error("Stage not found");
 
@@ -96,6 +104,7 @@ export const reorder = mutation({
 export const seedDefaults = mutation({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
+    await requireEditor(ctx);
     // Idempotent: check if stages already exist
     const existing = await ctx.db
       .query("hiringStages")
@@ -103,6 +112,30 @@ export const seedDefaults = mutation({
       .collect();
     if (existing.length > 0) return;
 
+    // Try to seed from global stages first
+    const globalStages = await ctx.db
+      .query("globalStages")
+      .collect();
+    const sortedGlobal = globalStages.sort((a, b) => a.orderIndex - b.orderIndex);
+
+    if (sortedGlobal.length > 0) {
+      for (const gs of sortedGlobal) {
+        await ctx.db.insert("hiringStages", {
+          roleId: args.roleId,
+          title: gs.title,
+          description: gs.description,
+          stageType: gs.stageType,
+          aiInstructions: gs.aiInstructions,
+          gateMinScore: gs.gateMinScore,
+          gateMinRatedPct: gs.gateMinRatedPct,
+          orderIndex: gs.orderIndex,
+          globalStageId: gs._id,
+        });
+      }
+      return;
+    }
+
+    // Fall back to hardcoded defaults
     await ctx.db.insert("hiringStages", {
       roleId: args.roleId,
       title: "Recruiter Interview",
