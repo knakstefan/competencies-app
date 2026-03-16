@@ -42,7 +42,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar onSignOut={handleSignOut} />
-      <main className="container mx-auto px-4 py-8">{children}</main>
+      <main className="container mx-auto p-10">{children}</main>
     </div>
   );
 };
