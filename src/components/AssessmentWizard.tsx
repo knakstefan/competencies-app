@@ -19,7 +19,6 @@ import { RATING_OPTIONS } from "@/lib/ratingConstants";
 import {
   RoleLevel,
   FALLBACK_LEVELS,
-  getLevelAbove as sharedGetLevelAbove,
   getLevelNBelow as sharedGetLevelNBelow,
   getLevelNAbove as sharedGetLevelNAbove,
   getCriteriaForLevelWithFallback,
@@ -149,7 +148,6 @@ export const AssessmentWizard = ({
   const memberLevelKey = labelToKey(levels, memberRole);
 
   const currentCompetencyStep = !isSummaryStep ? competencySteps[currentStep] : null;
-  const hasAboveOption = sharedGetLevelAbove(levels, memberLevelKey) !== null;
 
   // Stable fingerprint of evaluation data — used to detect changes for AI summary regeneration
   const assessmentFingerprint = useMemo(() => {
@@ -778,9 +776,7 @@ export const AssessmentWizard = ({
                                         opt.colorClass,
                                         !currentEvaluation && "opacity-50",
                                       )}
-                                      disabled={
-                                        (opt.value === "above" || opt.value === "well_above") && !hasAboveOption
-                                      }
+                                      disabled={false}
                                       onMouseEnter={() =>
                                         setHoveredRating(prev => ({ ...prev, [`${sub._id}-${criterion}`]: opt.value }))
                                       }

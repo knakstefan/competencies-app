@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { SkillMappingSkeleton } from "./skeletons/SkillMappingSkeleton";
+import { labelToKey, getLevelBaseScore, getMaxChartScale, IC_LEVELS } from "@/lib/levelUtils";
 
 interface TeamMember {
   _id: string;
@@ -94,7 +95,13 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
     subCompToCompetency.set(sc._id, sc.competencyId);
   });
 
-  // Calculate skill levels for each member and competency using 1-5 evaluation scale
+  // Calculate level-weighted skill scores for each member and competency
+  // Formula: levelBaseScore + (avgEvaluation - 3) * weight
+  // This positions members by their level and adjusts based on performance
+  const levels = IC_LEVELS;
+  const memberLevelKeys = members.map((m) => labelToKey(levels, m.role));
+  const maxScale = getMaxChartScale(levels, memberLevelKeys);
+
   const chartData: any[] = competencies.map((comp) => {
     const dataPoint: any = { competency: comp.title };
 
@@ -131,7 +138,10 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
       if (evalCount === 0) {
         dataPoint[member.name] = 0;
       } else {
-        dataPoint[member.name] = totalScore / evalCount;
+        const avgEval = totalScore / evalCount;
+        const memberLevelKey = labelToKey(levels, member.role);
+        const baseScore = getLevelBaseScore(levels, memberLevelKey);
+        dataPoint[member.name] = baseScore + (avgEval - 3);
       }
     });
 
@@ -166,7 +176,7 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
                   />
                   <PolarRadiusAxis
                     angle={90}
-                    domain={[0, 5]}
+                    domain={[0, maxScale]}
                     tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }}
                   />
                   {members.map((member, index) => (
@@ -193,7 +203,7 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
             </div>
             <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground">
-                Scale: 1-5 (1 = Well Below, 2 = Below, 3 = At Target, 4 = Above, 5 = Well Above)
+                Level-weighted scoring: Base score by level (P1=2, P2=4, P3=6, P4=8, P5=10) adjusted by evaluation (±2 from target)
               </p>
             </div>
           </>
