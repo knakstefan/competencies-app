@@ -167,25 +167,41 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <CardTitle>Team Skill Mapping</CardTitle>
-          <Badge variant="secondary">{members.length} Members</Badge>
+          <CardTitle className="text-base">Team Skill Mapping</CardTitle>
+          <Badge variant="secondary" className="text-xs">{members.length} Members</Badge>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Visual representation of team skills across all competencies
-        </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="pt-0 space-y-2">
         {hasAnyData ? (
           <>
-            <div className="h-[500px]">
+            <div className="h-[320px]">
               <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={chartData}>
+                <RadarChart data={chartData} cx="50%" cy="50%" outerRadius="55%">
                   <PolarGrid stroke="hsl(var(--border))" />
                   <PolarAngleAxis
                     dataKey="competency"
-                    tick={{ fill: 'hsl(var(--foreground))', fontSize: 12 }}
+                    tick={({ payload, x, y, textAnchor }: any) => {
+                      const label = payload.value as string;
+                      // Split long labels into two lines
+                      const maxLen = 16;
+                      let lines: string[];
+                      if (label.length <= maxLen) {
+                        lines = [label];
+                      } else {
+                        const mid = label.lastIndexOf(' ', maxLen);
+                        const splitAt = mid > 0 ? mid : maxLen;
+                        lines = [label.slice(0, splitAt), label.slice(splitAt).trimStart()];
+                      }
+                      return (
+                        <text x={x} y={y} textAnchor={textAnchor} fontSize={10} className="fill-muted-foreground">
+                          {lines.map((line, i) => (
+                            <tspan key={i} x={x} dy={i === 0 ? 0 : 12}>{line}</tspan>
+                          ))}
+                        </text>
+                      );
+                    }}
                   />
                   <PolarRadiusAxis
                     angle={90}
@@ -214,9 +230,9 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
                 </RadarChart>
               </ResponsiveContainer>
             </div>
-            <div className="border-t pt-4">
-              <p className="text-xs text-muted-foreground">
-                Level-weighted scoring: Base score by level (P1=2, P2=4, P3=6, P4=8, P5=10). Below-target scales down proportionally; above-target adds up to +1.5 (always below next level).
+            <div className="border-t pt-2">
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Base score by level (P1=2 … P5=10), scaled by evaluation. Below-target scales down proportionally; above-target adds up to +1.5.
               </p>
             </div>
           </>
