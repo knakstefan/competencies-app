@@ -6,7 +6,16 @@ import { useRoleLevels } from "@/hooks/useRoleLevels";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -25,6 +34,8 @@ const JobDescriptionPage = () => {
   const [selectedLevelKey, setSelectedLevelKey] = useState<string>("");
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [roleFocus, setRoleFocus] = useState("");
 
   const generateAction = useAction(api.ai.generateJobDescription);
 
@@ -45,21 +56,28 @@ const JobDescriptionPage = () => {
   const content = jd?.content as {
     title: string;
     summary: string;
+    portfolioCallout: string;
     responsibilities: string[];
     requirements: string[];
     niceToHave: string[];
-    competencyExpectations: { competency: string; expectation: string }[];
     levelContext: string;
   } | null;
 
+  const handleGenerateClick = () => {
+    if (!effectiveLevel || !selectedLevel) return;
+    setDialogOpen(true);
+  };
+
   const handleGenerate = async () => {
     if (!effectiveLevel || !selectedLevel) return;
+    setDialogOpen(false);
     setGenerating(true);
     try {
       await generateAction({
         roleId,
         levelKey: effectiveLevel,
         levelLabel: selectedLevel.label,
+        ...(roleFocus.trim() ? { roleFocus: roleFocus.trim() } : {}),
       });
       toast({ title: "Success", description: "Job description generated!" });
     } catch (error: any) {
@@ -100,21 +118,20 @@ const JobDescriptionPage = () => {
       content.title,
       "",
       content.summary,
+    ];
+    if (content.portfolioCallout) {
+      lines.push("", content.portfolioCallout);
+    }
+    lines.push(
       "",
       "Responsibilities",
       ...(content.responsibilities ?? []).map((r) => `- ${r}`),
       "",
       "Requirements",
       ...(content.requirements ?? []).map((r) => `- ${r}`),
-    ];
+    );
     if ((content.niceToHave ?? []).length > 0) {
       lines.push("", "Nice to Have", ...content.niceToHave.map((r) => `- ${r}`));
-    }
-    if ((content.competencyExpectations ?? []).length > 0) {
-      lines.push("", "Competency Expectations");
-      content.competencyExpectations.forEach((ce) => {
-        lines.push(`- ${ce.competency}: ${ce.expectation}`);
-      });
     }
     if (content.levelContext) {
       lines.push("", content.levelContext);
@@ -186,16 +203,52 @@ const JobDescriptionPage = () => {
         </div>
 
         {isAdmin && (
-          <Button onClick={handleGenerate} disabled={generating || !effectiveLevel}>
+          <Button onClick={handleGenerateClick} disabled={generating || !effectiveLevel}>
             {generating ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <Sparkles className="w-4 h-4 mr-2" />
             )}
-            {content ? "Regenerate" : "Generate"} JD
+            {content ? "Regenerate" : "Generate"}
           </Button>
         )}
       </div>
+
+      {/* Generate dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Job Description</DialogTitle>
+            <DialogDescription>
+              Optionally provide additional context to tailor this job description to a specific hiring need.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="role-focus">Role focus</Label>
+              <Textarea
+                id="role-focus"
+                placeholder="e.g. Joining the Growth team to own onboarding flows and activation experiments"
+                value={roleFocus}
+                onChange={(e) => setRoleFocus(e.target.value)}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Describe the team, specific responsibilities, or context for this hire.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleGenerate}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Content */}
       {jd === undefined && effectiveLevel ? (
@@ -230,15 +283,19 @@ const JobDescriptionPage = () => {
           {/* Summary */}
           <p className="text-muted-foreground leading-relaxed">{content.summary}</p>
 
+          {/* Portfolio callout */}
+          {content.portfolioCallout && (
+            <p className="text-sm font-medium text-primary">{content.portfolioCallout}</p>
+          )}
+
           {/* Responsibilities */}
           {content.responsibilities.length > 0 && (
             <section>
               <h3 className="text-lg font-semibold mb-3">Responsibilities</h3>
-              <ul className="space-y-2">
+              <ul className="list-disc list-outside ml-5 space-y-2">
                 {content.responsibilities.map((item, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                    <span className="text-primary mt-1 shrink-0">-</span>
-                    <span>{item}</span>
+                  <li key={i} className="text-sm text-muted-foreground">
+                    {item}
                   </li>
                 ))}
               </ul>
@@ -249,11 +306,10 @@ const JobDescriptionPage = () => {
           {content.requirements.length > 0 && (
             <section>
               <h3 className="text-lg font-semibold mb-3">Requirements</h3>
-              <ul className="space-y-2">
+              <ul className="list-disc list-outside ml-5 space-y-2">
                 {content.requirements.map((item, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                    <span className="text-primary mt-1 shrink-0">-</span>
-                    <span>{item}</span>
+                  <li key={i} className="text-sm text-muted-foreground">
+                    {item}
                   </li>
                 ))}
               </ul>
@@ -264,31 +320,13 @@ const JobDescriptionPage = () => {
           {content.niceToHave.length > 0 && (
             <section>
               <h3 className="text-lg font-semibold mb-3">Nice to Have</h3>
-              <ul className="space-y-2">
+              <ul className="list-disc list-outside ml-5 space-y-2">
                 {content.niceToHave.map((item, i) => (
-                  <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                    <span className="text-primary mt-1 shrink-0">-</span>
-                    <span>{item}</span>
+                  <li key={i} className="text-sm text-muted-foreground">
+                    {item}
                   </li>
                 ))}
               </ul>
-            </section>
-          )}
-
-          {/* Competency Expectations */}
-          {content.competencyExpectations.length > 0 && (
-            <section>
-              <h3 className="text-lg font-semibold mb-3">Competency Expectations</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {content.competencyExpectations.map((ce, i) => (
-                  <Card key={i}>
-                    <CardContent className="p-4">
-                      <h4 className="font-medium text-sm mb-1">{ce.competency}</h4>
-                      <p className="text-sm text-muted-foreground">{ce.expectation}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
             </section>
           )}
 

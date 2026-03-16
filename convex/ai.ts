@@ -389,6 +389,7 @@ export const generateJobDescription = action({
     roleId: v.id("roles"),
     levelKey: v.string(),
     levelLabel: v.string(),
+    roleFocus: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await requireAuthAction(ctx);
@@ -460,14 +461,14 @@ export const generateJobDescription = action({
       .map((l: any) => `${l.label}${l.description ? ` — ${l.description}` : ""}`)
       .join("\n");
 
-    const systemPrompt = `You are an expert technical recruiter who writes compelling, accurate job descriptions for design roles. You ground every requirement and responsibility in the provided competency framework — never invent skills or requirements that aren't supported by the framework data. Write in inclusive, bias-free language. Do not include compensation, benefits, or company-specific perks.`;
+    const systemPrompt = `You are an expert technical recruiter who writes compelling, accurate job descriptions for design roles. You ground every requirement and responsibility in the provided competency framework — never invent skills or requirements that aren't supported by the framework data. Responsibilities should focus on activities and outcomes — what the person actually does day-to-day — not process or methodology. Write in inclusive, bias-free language. Do not include compensation, benefits, or company-specific perks.`;
 
     const userPrompt = `Generate a structured job description for the following role and level.
 
 ROLE: ${role.title}
 TYPE: ${role.type === "ic" ? "Individual Contributor" : "Management"}
 ${role.description ? `ROLE DESCRIPTION: ${role.description}` : ""}
-
+${args.roleFocus ? `\nROLE FOCUS: ${args.roleFocus}\nThis is a subtle emphasis, not a redefinition of the role. The role focus may change after the hire, so treat it as a light highlight rather than the core of the job description. Mention it in the summary to give context on the immediate team or focus area. A few responsibility and requirement bullets can reflect this focus, but the majority should remain grounded in the general competency framework for this level.\n` : ""}
 TARGET LEVEL: ${args.levelLabel}
 ${selectedLevel.description ? `LEVEL DESCRIPTION: ${selectedLevel.description}` : ""}
 
@@ -482,21 +483,19 @@ Return ONLY valid JSON matching this exact structure:
 {
   "title": "Job title (e.g. Senior Product Designer)",
   "summary": "3-4 sentence role overview that describes what this person does, the impact they have, and what makes this level distinct",
-  "responsibilities": ["8-12 bullet items grounded in the competency criteria above"],
-  "requirements": ["6-10 bullet items describing must-have skills and experience"],
-  "niceToHave": ["3-5 bullet items for preferred qualifications"],
-  "competencyExpectations": [
-    { "competency": "Competency area name", "expectation": "1-2 sentences summarizing what is expected at this level" }
-  ],
+  "portfolioCallout": "A short sentence asking applicants to include a link to their portfolio when applying",
+  "responsibilities": ["Activity-focused bullets that weave in competency expectations naturally"],
+  "requirements": ["Must-have skills and experience"],
+  "niceToHave": ["Preferred qualifications"],
   "levelContext": "1-2 sentences describing where this level sits in the career ladder and what distinguishes it from adjacent levels"
 }
 
 REQUIREMENTS:
 - Ground responsibilities and requirements in the actual competency criteria provided — do not invent skills
-- Write responsibilities as action-oriented statements starting with verbs
-- Requirements should reflect the level of experience and skill depth implied by the criteria
+- Write responsibilities as activity-focused statements starting with verbs — describe what the person does, not process
+- Weave competency expectations into responsibilities naturally rather than listing them separately
+- Requirements should reflect the level of experience and skill depth implied by the criteria — describe experience in qualitative terms (e.g. "deep experience", "proven track record"), never use numeric years or quantities
 - Nice-to-have items can extend slightly beyond the framework but should stay relevant
-- competencyExpectations should have one entry per competency area provided
 - Use inclusive, bias-free language throughout
 - Do not include compensation, benefits, or company-specific information
 - Keep the tone professional yet approachable`;
@@ -539,6 +538,7 @@ REQUIREMENTS:
     const jdContent = {
       title: String(parsed.title || `${args.levelLabel} ${role.title}`),
       summary: String(parsed.summary || ""),
+      portfolioCallout: String(parsed.portfolioCallout || ""),
       responsibilities: Array.isArray(parsed.responsibilities)
         ? parsed.responsibilities.map(String).filter((s: string) => s.length > 0)
         : [],
@@ -547,14 +547,6 @@ REQUIREMENTS:
         : [],
       niceToHave: Array.isArray(parsed.niceToHave)
         ? parsed.niceToHave.map(String).filter((s: string) => s.length > 0)
-        : [],
-      competencyExpectations: Array.isArray(parsed.competencyExpectations)
-        ? parsed.competencyExpectations
-            .map((ce: any) => ({
-              competency: String(ce.competency || ""),
-              expectation: String(ce.expectation || ""),
-            }))
-            .filter((ce: any) => ce.competency.length > 0)
         : [],
       levelContext: String(parsed.levelContext || ""),
     };

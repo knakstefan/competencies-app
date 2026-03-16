@@ -464,7 +464,7 @@ Encompasses user research methods, insight synthesis, and strategic UX vision th
 
 # 5. Technical Fluency
 
-This competency covers how designers work with engineering to create feasible, scalable, and high-quality product experiences.
+This competency covers how designers contribute technically to product development — from understanding front-end constraints to directly implementing UI, usability, and feature improvements using AI coding tools.
 
 ## 5.1 Technical Proficiency
 
@@ -501,34 +501,34 @@ This competency covers how designers work with engineering to create feasible, s
 ## 5.2 Integration with Development
 
 ### P1 Entry
-- Delivers annotated designs using handoff templates consistently
-- Clarifies design behavior when engineers ask questions
-- Uses handoff templates and specs to communicate intent
-- Flags obvious implementation mismatches between design and build
+- Uses AI coding tools to make simple UI fixes (spacing, copy, colors) and submits PRs for review
+- Reviews builds in staging or Storybook and flags visual discrepancies
+- Follows established PR workflows and responds to code review feedback
+- Fixes straightforward usability issues directly in the codebase with AI assistance
 
 ### P2 Developing
-- Reviews builds in Storybook or staging environments proactively
-- Flags discrepancies with rationale and suggests corrections
-- Plans for responsiveness and edge cases during handoff
-- Makes pragmatic design decisions under engineering constraints
+- Submits PRs for UI polish, interaction refinements, and minor feature tweaks using AI coding tools
+- Reviews implemented features against design specs and fixes discrepancies directly
+- Builds comfort navigating front-end codebases to locate and modify relevant components
+- Collaborates with engineers on PR reviews, explaining design rationale for code changes
 
 ### P3 Career
-- Defines naming conventions and component behaviors for engineering
-- Reviews full-state implementations and ensures design fidelity
-- Documents components for reuse across features
-- Ensures QA issues are addressed efficiently through clear communication
+- Uses AI coding tools to implement UI and usability improvements across features independently
+- Submits well-scoped PRs for design fidelity fixes, component behavior adjustments, and small features
+- Identifies patterns in recurring UI issues and fixes them systematically in the codebase
+- Partners with engineering to ensure design-driven code changes meet quality and performance standards
 
 ### P4 Advanced
-- Standardizes handoff and review workflows across teams
-- Removes systemic design-engineering blockers through process improvement
-- Coaches designers in effective cross-functional collaboration with engineering
-- Ensures design system changes integrate cleanly into engineering workflows
+- Champions designer-submitted PRs as a practice and coaches others in using AI coding tools effectively
+- Establishes patterns and guidelines for designers contributing code changes across teams
+- Uses AI coding tools to prototype and ship cross-cutting UI and usability improvements
+- Removes barriers between design and engineering by normalizing direct code contributions from designers
 
 ### P5 Principal
-- Defines handoff frameworks and governance standards organization-wide
-- Influences release cadences and design operations models
-- Ensures integration tools and processes support both velocity and quality
-- Aligns design and engineering practices holistically across the organization
+- Shapes the organization's approach to designers as code contributors using AI tools
+- Defines governance and quality standards for designer-submitted PRs at scale
+- Drives investment in AI coding tool workflows that accelerate design-to-code iteration
+- Aligns design and engineering practices so that designers can directly improve product quality across the organization
 
 ## 5.3 AI Tools & Technical Literacy
 
