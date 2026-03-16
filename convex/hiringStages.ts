@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireAuth, requireEditor, requireAdmin } from "./auth.helpers";
 
@@ -98,6 +98,137 @@ export const reorder = mutation({
         await ctx.db.patch(reordered[i]._id, { orderIndex: i });
       }
     }
+  },
+});
+
+const DEFAULT_STAGE_DATA: Record<string, { description: string; stageType: string; aiInstructions: string }> = {
+  "Recruiter Interview": {
+    description: "Initial screen to assess motivation, communication, career trajectory, and basic role alignment.",
+    stageType: "ai_interview",
+    aiInstructions: `You are generating questions for a RECRUITER SCREEN — the first conversation in the hiring process. This is NOT a deep technical or craft interview.
+
+FOCUS AREAS:
+- Motivation & Interest: Why this company, why this role, what excites them about the opportunity
+- Career Narrative: How their career path led them here, key transitions, what they learned
+- Communication & Presence: Can they articulate ideas clearly and concisely?
+- Role Understanding: Do they understand what the role entails at this level?
+- Cultural Signals: Work style preferences, team dynamics they thrive in, values alignment
+- Logistics & Expectations: Timeline, compensation expectations, location/remote preferences
+
+QUESTION STYLE:
+- Conversational and warm — this is a first impression for both sides
+- Open-ended but not overly complex
+- 1-2 behavioral questions max, the rest should be exploratory/conversational
+- Include at least one question that lets the candidate ask about the company/team
+
+DO NOT generate deeply technical, craft-specific, or leadership-depth questions — those belong in later stages.
+
+CATEGORIES to use: Motivation, Career Background, Role Fit, Culture & Values, Candidate Questions`,
+  },
+  "Manager Interview": {
+    description: "Hiring manager deep-dive into craft and process, leadership approach, collaboration patterns, and competency alignment.",
+    stageType: "ai_interview",
+    aiInstructions: `You are generating questions for the HIRING MANAGER INTERVIEW — the core evaluation stage where the manager assesses the candidate's depth across role competencies.
+
+FOCUS AREAS:
+- Process & Thinking: How they approach ambiguous problems, their end-to-end workflow, how they scope and prioritize work
+- Collaboration & Influence: How they work with cross-functional partners and stakeholders; how they navigate disagreements; how they build alignment
+- Leadership & Growth (scaled to level): For junior roles — learning and initiative; for senior roles — mentorship, strategy, and organizational influence
+- Competency Depth: Directly probe the competency areas defined in the role's framework. Reference specific competencies when generating questions.
+- Self-Awareness: How they talk about failures, gaps, and growth areas
+- Impact & Outcomes: Concrete examples of work that drove measurable results
+
+QUESTION STYLE:
+- Behavioral (STAR format) — ask for specific examples, not hypotheticals
+- Probe follow-ups: For each major question, include a suggested follow-up signal that digs deeper
+- Scale difficulty to the candidate's target level
+- At least 2-3 questions should directly reference competency areas from the role's framework
+
+CATEGORIES to use: Process & Craft, Collaboration & Influence, Leadership & Mentorship, Impact & Outcomes, Self-Awareness & Growth`,
+  },
+  "Team Interview": {
+    description: "Peer-led assessment of day-to-day collaboration, craft depth, feedback dynamics, and team chemistry.",
+    stageType: "ai_interview",
+    aiInstructions: `You are generating questions for a TEAM INTERVIEW — where current team members assess what it would be like to work with this candidate day-to-day.
+
+FOCUS AREAS:
+- Working Style: How they collaborate in cross-functional teams, their communication cadence, how they handle fast-moving environments
+- Craft & Execution: Depth of domain skills, attention to detail, how they approach quality vs. speed tradeoffs
+- Feedback & Critique: How they give and receive feedback on their work, how they handle pushback
+- Problem-Solving: How they break down complex problems, their approach to constraints and edge cases
+- Team Dynamics: How they handle conflict, support teammates, contribute to team culture
+- Adaptability: How they respond to changing requirements, ambiguity, or shifting priorities
+
+QUESTION STYLE:
+- Scenario-based and practical — "Walk me through how you would..." or "Tell me about a time when..."
+- Questions should feel natural for a peer to ask (not overly formal or managerial)
+- Include questions that reveal how the candidate would fit into existing team workflows
+- At least one question about how they handle disagreement with a teammate or stakeholder
+- At least one question about their approach to giving or receiving critique
+
+CATEGORIES to use: Collaboration, Craft & Quality, Feedback & Communication, Problem-Solving, Team Dynamics`,
+  },
+  "Bar Raiser Interview": {
+    description: "Senior cross-functional evaluator ensuring the candidate raises the overall quality bar of the team.",
+    stageType: "ai_interview",
+    aiInstructions: `You are generating questions for a BAR RAISER INTERVIEW — a senior evaluator (often from outside the immediate team) who assesses whether this candidate genuinely raises the bar for the organization.
+
+FOCUS AREAS:
+- Strategic Thinking: Can they see beyond the immediate task? Do they think in systems, not just individual deliverables?
+- Judgment & Decision-Making: How do they make decisions with incomplete information? What tradeoffs do they navigate?
+- Growth Trajectory: Where are they headed? Do they have the intellectual curiosity and drive to keep growing?
+- Culture Add (not just fit): What unique perspectives, skills, or experiences do they bring that the team doesn't already have?
+- Resilience & Integrity: How do they handle failure, setbacks, or ethical dilemmas in their work?
+- Red Flag Detection: Questions designed to surface potential concerns — over-reliance on process, inability to articulate impact, lack of ownership
+
+QUESTION STYLE:
+- Challenging but fair — these questions should make the candidate think, not trick them
+- Hypothetical/situational questions are appropriate here (unlike earlier stages)
+- Include at least one "pressure test" question that requires the candidate to defend a position or make a tough call
+- Include at least one question that probes intellectual curiosity or learning orientation
+- Signals should clearly distinguish between "meets bar" and "raises bar" answers
+
+CATEGORIES to use: Strategic Thinking, Judgment & Decision-Making, Growth & Curiosity, Culture Add, Resilience & Integrity`,
+  },
+};
+
+// One-time migration: backfill default data onto existing stages that are missing it
+export const backfillStageData = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+
+    let updatedHiring = 0;
+    let updatedGlobal = 0;
+
+    // Backfill hiringStages
+    const allHiringStages = await ctx.db.query("hiringStages").collect();
+    for (const hs of allHiringStages) {
+      const defaults = DEFAULT_STAGE_DATA[hs.title];
+      if (!defaults) continue;
+      if (hs.aiInstructions && hs.description) continue; // already has data
+      await ctx.db.patch(hs._id, {
+        description: hs.description || defaults.description,
+        stageType: hs.stageType || defaults.stageType,
+        aiInstructions: hs.aiInstructions || defaults.aiInstructions,
+      });
+      updatedHiring++;
+    }
+
+    // Backfill globalStages
+    const allGlobalStages = await ctx.db.query("globalStages").collect();
+    for (const gs of allGlobalStages) {
+      const defaults = DEFAULT_STAGE_DATA[gs.title];
+      if (!defaults) continue;
+      if (gs.aiInstructions && gs.description) continue;
+      await ctx.db.patch(gs._id, {
+        description: gs.description || defaults.description,
+        stageType: gs.stageType || defaults.stageType,
+        aiInstructions: gs.aiInstructions || defaults.aiInstructions,
+      });
+      updatedGlobal++;
+    }
+
+    return { updatedHiring, updatedGlobal };
   },
 });
 
