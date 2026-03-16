@@ -342,11 +342,10 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
               </div>
             </div>
 
-            {/* Skills to look for */}
-            <SkillsRecommendation roleId={roleId} />
-
+            {/* Main content with sidebar */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 mt-8">
             {/* Candidate cards grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start mt-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
               {candidateList.map((candidate, index) => (
                   <div
                     key={candidate._id}
@@ -471,6 +470,14 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                     <span className="text-sm font-medium">Add Candidate</span>
                   </button>
                 )}
+            </div>
+
+            {/* Right sidebar: Skills to look for */}
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <div className="rounded-xl border bg-card p-4">
+                <SkillsRecommendation roleId={roleId} />
+              </div>
+            </div>
             </div>
           </TabsContent>
 

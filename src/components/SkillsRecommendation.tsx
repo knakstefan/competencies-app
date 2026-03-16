@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -44,19 +43,10 @@ const getStrengthLabel = (avgScore: number, maxScore: number) => {
   const ratio = avgScore / maxScore;
   if (ratio < 0.3) return "Very weak";
   if (ratio < 0.45) return "Weak";
-  if (ratio < 0.55) return "Below average";
+  if (ratio < 0.55) return "Below avg";
   if (ratio < 0.7) return "Average";
-  if (ratio < 0.85) return "Above average";
+  if (ratio < 0.85) return "Above avg";
   return "Strong";
-};
-
-const getStrengthDots = (avgScore: number, maxScore: number) => {
-  const ratio = avgScore / maxScore;
-  if (ratio < 0.3) return 1;
-  if (ratio < 0.45) return 2;
-  if (ratio < 0.6) return 3;
-  if (ratio < 0.75) return 4;
-  return 5;
 };
 
 interface SkillsRecommendationProps {
@@ -81,23 +71,12 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
 
   if (loading) {
     return (
-      <Card className="relative overflow-hidden">
-        <div className="h-0.5 bg-gradient-knak" />
-        <CardHeader className="pb-3">
-          <Skeleton className="h-5 w-40" />
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-4 w-28" />
-                <Skeleton className="h-5 w-16" />
-              </div>
-              <Skeleton className="h-2 w-full" />
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-3/4" />
+        <Skeleton className="h-3 w-full" />
+      </div>
     );
   }
 
@@ -112,20 +91,15 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
 
   if (members.length === 0) {
     return (
-      <Card className="relative overflow-hidden">
-        <div className="h-0.5 bg-gradient-knak" />
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Lightbulb className="h-4 w-4 text-warning" />
-            Skills to Look For
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-center text-muted-foreground py-4 text-sm">
-            Add team members and complete assessments to see hiring recommendations based on team gaps.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-warning" />
+          <h3 className="text-sm font-semibold">Skills to Look For</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Add team members and complete assessments to see hiring recommendations.
+        </p>
+      </div>
     );
   }
 
@@ -252,20 +226,15 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
 
   if (!hasData) {
     return (
-      <Card className="relative overflow-hidden">
-        <div className="h-0.5 bg-gradient-knak" />
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Lightbulb className="h-4 w-4 text-warning" />
-            Skills to Look For
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <p className="text-center text-muted-foreground py-4 text-sm">
-            Complete team assessments to see hiring recommendations based on skill gaps.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-warning" />
+          <h3 className="text-sm font-semibold">Skills to Look For</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Complete team assessments to see hiring recommendations.
+        </p>
+      </div>
     );
   }
 
@@ -292,55 +261,33 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
       "Team is well-rounded. Hire for culture add or to deepen existing strengths.";
   }
 
-  const renderCompetencyRow = (rec: CompetencyScore) => {
-    const dots = getStrengthDots(rec.avgScore, rec.maxScore);
+  const renderCompetencyItem = (rec: CompetencyScore) => {
     const label = getStrengthLabel(rec.avgScore, rec.maxScore);
-    const dotColor =
+    const labelColor =
       rec.priority === "high"
-        ? "bg-destructive"
+        ? "text-destructive"
         : rec.priority === "medium"
-          ? "bg-warning"
-          : "bg-success";
-    const emptyDotColor =
-      rec.priority === "high"
-        ? "bg-destructive/20"
-        : rec.priority === "medium"
-          ? "bg-warning/20"
-          : "bg-success/20";
+          ? "text-warning"
+          : "text-success";
 
     return (
-      <div key={rec.competencyId} className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm font-medium">{rec.competencyTitle}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">{label}</span>
-            <div className="flex gap-0.5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-1.5 h-1.5 rounded-full ${i < dots ? dotColor : emptyDotColor}`}
-                />
-              ))}
-            </div>
-          </div>
+      <div key={rec.competencyId} className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-medium truncate">{rec.competencyTitle}</span>
+          <span className={`text-[10px] font-medium shrink-0 ${labelColor}`}>{label}</span>
         </div>
-        {/* Sub-competencies for gaps */}
+        {/* Sub-competency breakdown for gaps */}
         {(rec.priority === "high" || rec.priority === "medium") &&
           rec.subScores.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 pl-0.5">
-              {rec.subScores.map((sub) => {
-                const subLabel = getStrengthLabel(sub.avgScore, rec.maxScore);
-                return (
-                  <Badge
-                    key={sub.subCompetencyId}
-                    variant="outline"
-                    className="text-xs font-normal gap-1"
-                  >
-                    {sub.title}
-                    <span className="text-muted-foreground">{subLabel}</span>
-                  </Badge>
-                );
-              })}
+            <div className="flex flex-wrap gap-1">
+              {rec.subScores.map((sub) => (
+                <span
+                  key={sub.subCompetencyId}
+                  className="text-[10px] text-muted-foreground bg-muted/80 rounded px-1.5 py-0.5"
+                >
+                  {sub.title}
+                </span>
+              ))}
             </div>
           )}
       </div>
@@ -348,129 +295,122 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
   };
 
   return (
-    <Card className="relative overflow-hidden">
-      <div className="h-0.5 bg-gradient-knak" />
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full text-left"
-      >
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Lightbulb className="h-4 w-4 text-warning" />
-              Skills to Look For
-            </CardTitle>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-muted-foreground">
-                Based on {assessedMemberCount}/{members.length} assessed members
-              </span>
-              <ChevronDown
-                className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
-              />
-            </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-warning" />
+          <h3 className="text-sm font-semibold">Skills to Look For</h3>
+        </div>
+        <span className="text-[10px] text-muted-foreground">
+          {assessedMemberCount}/{members.length} assessed
+        </span>
+      </div>
+
+      {/* Summary */}
+      <p className="text-xs text-muted-foreground leading-relaxed">{summaryText}</p>
+
+      {/* Critical Gaps */}
+      {criticalGaps.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <TrendingDown className="h-3 w-3 text-destructive" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-destructive">
+              Critical Gaps
+            </span>
           </div>
-        </CardHeader>
-        <CardContent className="pt-0 pb-4">
-          <div className="rounded-lg bg-muted/50 px-4 py-3">
-            <p className="text-sm text-foreground">{summaryText}</p>
+          <div className="space-y-3">
+            {criticalGaps.map(renderCompetencyItem)}
           </div>
-        </CardContent>
-      </button>
+        </div>
+      )}
 
-      {isExpanded && (
-        <CardContent className="space-y-5 pt-0">
-          {/* Critical Gaps */}
-          {criticalGaps.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
-                <h4 className="text-xs font-medium uppercase tracking-wide text-destructive">
-                  Critical Gaps
-                </h4>
-                <Badge variant="destructive" className="text-xs ml-auto">
-                  {criticalGaps.length}
-                </Badge>
-              </div>
-              <div className="space-y-3 pl-5">
-                {criticalGaps.map(renderCompetencyRow)}
-              </div>
-            </div>
-          )}
+      {/* Areas to Strengthen */}
+      {gaps.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-1.5">
+            <Minus className="h-3 w-3 text-warning" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-warning">
+              Areas to Strengthen
+            </span>
+          </div>
+          <div className="space-y-3">
+            {gaps.map(renderCompetencyItem)}
+          </div>
+        </div>
+      )}
 
-          {/* Areas to Strengthen */}
-          {gaps.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Minus className="h-3.5 w-3.5 text-warning" />
-                <h4 className="text-xs font-medium uppercase tracking-wide text-warning">
-                  Areas to Strengthen
-                </h4>
-                <Badge className="text-xs ml-auto bg-warning text-warning-foreground hover:bg-warning/90">
-                  {gaps.length}
-                </Badge>
-              </div>
-              <div className="space-y-3 pl-5">
-                {gaps.map(renderCompetencyRow)}
-              </div>
-            </div>
-          )}
+      {/* Expandable: strengths & not-assessed */}
+      {(notAssessed.length > 0 || strengths.length > 0) && (
+        <>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1.5 w-full text-left pt-1 border-t border-border/50"
+          >
+            <span className="text-[10px] font-medium text-muted-foreground">
+              {isExpanded ? "Hide" : "Show"} strengths & unassessed
+            </span>
+            <ChevronDown
+              className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
+            />
+          </button>
 
-          {/* Not Assessed */}
-          {notAssessed.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 text-muted-foreground" />
-                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Not Yet Assessed
-                </h4>
-                <Badge variant="outline" className="text-xs ml-auto border-dashed">
-                  {notAssessed.length}
-                </Badge>
-              </div>
-              <div className="flex flex-wrap gap-1.5 pl-5">
-                {notAssessed.map((rec) => (
-                  <Badge
-                    key={rec.competencyId}
-                    variant="outline"
-                    className="text-xs font-normal border-dashed"
+          {isExpanded && (
+            <div className="space-y-4">
+              {/* Not Assessed */}
+              {notAssessed.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Not Assessed
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {notAssessed.map((rec) => (
+                      <span
+                        key={rec.competencyId}
+                        className="text-[10px] text-muted-foreground border border-dashed border-border rounded px-1.5 py-0.5"
+                      >
+                        {rec.competencyTitle}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Team Strengths */}
+              {strengths.length > 0 && (
+                <div className="space-y-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowStrengths(!showStrengths);
+                    }}
+                    className="flex items-center gap-1.5 w-full text-left"
                   >
-                    {rec.competencyTitle}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Team Strengths — collapsed by default */}
-          {strengths.length > 0 && (
-            <div className="space-y-3 border-t pt-4">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowStrengths(!showStrengths);
-                }}
-                className="flex items-center gap-2 w-full text-left"
-              >
-                <ShieldCheck className="h-3.5 w-3.5 text-success" />
-                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Team Strengths
-                </h4>
-                <Badge className="text-xs ml-auto bg-success text-success-foreground hover:bg-success/90">
-                  {strengths.length}
-                </Badge>
-                <ChevronDown
-                  className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${showStrengths ? "rotate-180" : ""}`}
-                />
-              </button>
-              {showStrengths && (
-                <div className="space-y-3 pl-5">
-                  {strengths.map(renderCompetencyRow)}
+                    <ShieldCheck className="h-3 w-3 text-success" />
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Strengths
+                    </span>
+                    <Badge className="text-[10px] h-4 px-1.5 ml-auto bg-success text-success-foreground hover:bg-success/90">
+                      {strengths.length}
+                    </Badge>
+                    <ChevronDown
+                      className={`h-3 w-3 text-muted-foreground transition-transform ${showStrengths ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                  {showStrengths && (
+                    <div className="space-y-3">
+                      {strengths.map(renderCompetencyItem)}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </CardContent>
+        </>
       )}
-    </Card>
+    </div>
   );
 };
