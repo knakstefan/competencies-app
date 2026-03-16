@@ -12,6 +12,7 @@ interface CandidateAISummary {
     observation: string;
   }>;
   hiringRecommendation: string;
+  teamFit?: string;
 }
 
 interface CandidateAssessmentSummaryProps {
@@ -92,6 +93,14 @@ export const CandidateAssessmentSummary = ({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Team Fit */}
+          {aiSummary.teamFit && (
+            <div className="py-2 px-3 rounded-md bg-primary/5 border border-primary/10">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Team Fit</p>
+              <p className="text-sm text-muted-foreground">{aiSummary.teamFit}</p>
             </div>
           )}
 

@@ -236,11 +236,10 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
           </div>
         </div>
 
-        {/* Skills Overview */}
-        <TeamSkillMapping roleId={roleId} />
-
+        {/* Main content with sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
         {/* Member cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
           {memberList.map((member, index) => (
             <div
               key={member._id}
@@ -340,6 +339,12 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
               <span className="text-sm font-medium">Add Team Member</span>
             </button>
           )}
+        </div>
+
+        {/* Right sidebar: Team Skill Mapping */}
+        <div className="lg:sticky lg:top-6 lg:self-start">
+          <TeamSkillMapping roleId={roleId} />
+        </div>
         </div>
       </div>
 

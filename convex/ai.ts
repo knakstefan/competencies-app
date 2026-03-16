@@ -1120,6 +1120,74 @@ export const generateCandidateAssessmentSummary = action({
       }
     }
 
+    // Build team skill gaps context from existing team assessments
+    let teamSkillGaps: { competency: string; avgScore: number; priority: string }[] = [];
+    try {
+      const roleId = candidate.roleId;
+      const skillData: any = roleId
+        ? await ctx.runQuery(api.teamSkillData.getTeamSkillDataByRole, { roleId })
+        : await ctx.runQuery(api.teamSkillData.getTeamSkillData, {});
+
+      if (skillData && skillData.members.length > 0) {
+        const evalScores: Record<string, number> = {
+          well_below: 1, below: 2, target: 3, above: 4, well_above: 5,
+        };
+
+        const evalsByProgress = new Map<string, any[]>();
+        skillData.allEvaluations.forEach((e: any) => {
+          if (!evalsByProgress.has(e.progressId)) evalsByProgress.set(e.progressId, []);
+          evalsByProgress.get(e.progressId)!.push(e);
+        });
+
+        const subToComp = new Map<string, string>();
+        skillData.subCompetencies.forEach((sc: any) => subToComp.set(sc._id, sc.competencyId));
+
+        for (const comp of skillData.competencies) {
+          let compTotal = 0;
+          let memberCount = 0;
+
+          for (const member of skillData.members) {
+            const assessmentId = skillData.latestAssessmentByMember[member._id];
+            if (!assessmentId) continue;
+
+            const memberProgress = skillData.allProgress.filter(
+              (p: any) => p.assessmentId === assessmentId && subToComp.get(p.subCompetencyId) === comp._id
+            );
+            if (memberProgress.length === 0) continue;
+
+            let total = 0;
+            let count = 0;
+            for (const p of memberProgress) {
+              const evals = evalsByProgress.get(p._id) || [];
+              for (const e of evals) {
+                total += evalScores[e.evaluation] || 3;
+                count++;
+              }
+            }
+            if (count > 0) {
+              compTotal += total / count;
+              memberCount++;
+            }
+          }
+
+          if (memberCount > 0) {
+            const avg = compTotal / memberCount;
+            let priority = "strength";
+            if (avg < 2.5) priority = "critical_gap";
+            else if (avg < 3.5) priority = "needs_strengthening";
+            teamSkillGaps.push({ competency: comp.title, avgScore: Math.round(avg * 100) / 100, priority });
+          }
+        }
+
+        // Only keep gaps, sorted weakest first
+        teamSkillGaps = teamSkillGaps
+          .filter((g) => g.priority !== "strength")
+          .sort((a, b) => a.avgScore - b.avgScore);
+      }
+    } catch {
+      // Non-critical — continue without team gaps context
+    }
+
     const categoryAvgs = Object.entries(categoryScores).map(([cat, { total, count }]) => ({
       category: cat,
       avgScore: Math.round((total / count) * 100) / 100,
@@ -1143,7 +1211,8 @@ Return ONLY valid JSON matching this exact structure:
       "observation": "1-2 sentences explaining the concern and what was missing"
     }
   ],
-  "hiringRecommendation": "One of: Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire"
+  "hiringRecommendation": "One of: Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire",
+  "teamFit": "2-3 sentences on how well this candidate addresses the team's current skill gaps (omit if no team gaps data provided)"
 }
 
 IMPORTANT RULES:
@@ -1156,7 +1225,8 @@ IMPORTANT RULES:
   - Lean Hire: Average >= 3.0, some below-target items
   - Lean No Hire: Average >= 2.5 or several below-target items
   - No Hire: Average < 2.5 or many critical below-target items
-- Keep all text concise and actionable`;
+- Keep all text concise and actionable
+- If TEAM SKILL GAPS data is provided, evaluate how well the candidate's strengths align with the team's current needs and include a "teamFit" field in your response — a 2-3 sentence assessment of whether this candidate would fill the team's skill gaps`;
 
     const allResponses = normalized.map((r) => ({
       category: r.category,
@@ -1182,7 +1252,10 @@ ${JSON.stringify(belowTargetItems.map((r) => ({
   rating: ratingLabelMap[r.rating] || r.rating,
   notes: r.notes,
 })), null, 2)}` : "No below-target items — all responses are at or above target."}
-
+${teamSkillGaps.length > 0 ? `
+TEAM SKILL GAPS (current team weaknesses that this hire should ideally address):
+${JSON.stringify(teamSkillGaps, null, 2)}
+Evaluate whether this candidate's strengths align with the skills the team currently lacks.` : ""}
 Generate the hiring assessment summary JSON.`;
 
     const client = new Anthropic();
@@ -1232,6 +1305,7 @@ Generate the hiring assessment summary JSON.`;
           })).filter((c: any) => c.area.length > 0)
         : [],
       hiringRecommendation: String(parsed.hiringRecommendation || "Lean Hire"),
+      ...(parsed.teamFit ? { teamFit: String(parsed.teamFit) } : {}),
     };
 
     // Store on the assessment record
