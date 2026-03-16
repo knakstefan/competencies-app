@@ -353,7 +353,7 @@ const JobDescriptionPage = () => {
             </p>
             {isAdmin && (
               <p className="text-sm text-muted-foreground mt-1">
-                Click "Generate JD" to create one from the competency framework.
+                Click "Generate" to create one from the competency framework.
               </p>
             )}
           </div>
