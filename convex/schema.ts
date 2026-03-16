@@ -180,6 +180,7 @@ export default defineSchema({
         observation: v.string(),
       })),
       hiringRecommendation: v.string(),
+      teamFitRating: v.optional(v.string()),
       teamFit: v.optional(v.string()),
     })),
   }).index("by_candidateId", ["candidateId"]),

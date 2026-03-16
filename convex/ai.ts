@@ -1212,6 +1212,7 @@ Return ONLY valid JSON matching this exact structure:
     }
   ],
   "hiringRecommendation": "One of: Strong Hire / Hire / Lean Hire / Lean No Hire / No Hire",
+  "teamFitRating": "One of: Strong Fit / Good Fit / Partial Fit / Weak Fit / No Fit",
   "teamFit": "2-3 sentences on how well this candidate addresses the team's current skill gaps (omit if no team gaps data provided)"
 }
 
@@ -1226,7 +1227,9 @@ IMPORTANT RULES:
   - Lean No Hire: Average >= 2.5 or several below-target items
   - No Hire: Average < 2.5 or many critical below-target items
 - Keep all text concise and actionable
-- If TEAM SKILL GAPS data is provided, evaluate how well the candidate's strengths align with the team's current needs and include a "teamFit" field in your response — a 2-3 sentence assessment of whether this candidate would fill the team's skill gaps`;
+- If TEAM SKILL GAPS data is provided, include "teamFitRating" and "teamFit" fields:
+  - teamFitRating: Strong Fit (candidate's strengths directly address critical gaps), Good Fit (addresses some gaps well), Partial Fit (addresses minor gaps or tangentially), Weak Fit (doesn't address key gaps), No Fit (no alignment with team needs)
+  - teamFit: 2-3 sentences explaining the rating — lead with a clear statement of whether this is a good team fit, then explain which gaps they would or wouldn't address`;
 
     const allResponses = normalized.map((r) => ({
       category: r.category,
@@ -1305,6 +1308,7 @@ Generate the hiring assessment summary JSON.`;
           })).filter((c: any) => c.area.length > 0)
         : [],
       hiringRecommendation: String(parsed.hiringRecommendation || "Lean Hire"),
+      ...(parsed.teamFitRating ? { teamFitRating: String(parsed.teamFitRating) } : {}),
       ...(parsed.teamFit ? { teamFit: String(parsed.teamFit) } : {}),
     };
 

@@ -12,6 +12,7 @@ interface CandidateAISummary {
     observation: string;
   }>;
   hiringRecommendation: string;
+  teamFitRating?: string;
   teamFit?: string;
 }
 
@@ -99,7 +100,21 @@ export const CandidateAssessmentSummary = ({
           {/* Team Fit */}
           {aiSummary.teamFit && (
             <div className="py-2 px-3 rounded-md bg-primary/5 border border-primary/10">
-              <p className="text-xs font-medium text-muted-foreground mb-1">Team Fit</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs font-medium text-muted-foreground">Team Fit</p>
+                {aiSummary.teamFitRating && (
+                  <Badge
+                    className={`text-xs ${
+                      aiSummary.teamFitRating.includes("Strong") ? "bg-green-600" :
+                      aiSummary.teamFitRating.includes("Good") ? "bg-green-600/80" :
+                      aiSummary.teamFitRating.includes("Partial") ? "bg-yellow-600" :
+                      "bg-orange-600"
+                    }`}
+                  >
+                    {aiSummary.teamFitRating}
+                  </Badge>
+                )}
+              </div>
               <p className="text-sm text-muted-foreground">{aiSummary.teamFit}</p>
             </div>
           )}

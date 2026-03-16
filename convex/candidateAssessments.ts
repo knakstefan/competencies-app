@@ -123,6 +123,7 @@ export const updateGeneratedSummary = mutation({
         observation: v.string(),
       })),
       hiringRecommendation: v.string(),
+      teamFitRating: v.optional(v.string()),
       teamFit: v.optional(v.string()),
     }),
   },

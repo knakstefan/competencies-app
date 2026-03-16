@@ -283,8 +283,22 @@ export const CandidateStageAssessments = ({
                           {assessment.generatedSummary.teamFit && (
                             <div className="flex gap-2 py-2 px-3 rounded-md bg-primary/5 border border-primary/10">
                               <Users className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-xs font-medium text-primary mb-0.5">Team Fit</p>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <p className="text-xs font-medium text-primary">Team Fit</p>
+                                  {assessment.generatedSummary.teamFitRating && (
+                                    <Badge
+                                      className={`text-[10px] h-5 ${
+                                        assessment.generatedSummary.teamFitRating.includes("Strong") ? "bg-green-600" :
+                                        assessment.generatedSummary.teamFitRating.includes("Good") ? "bg-green-600/80" :
+                                        assessment.generatedSummary.teamFitRating.includes("Partial") ? "bg-yellow-600" :
+                                        "bg-orange-600"
+                                      }`}
+                                    >
+                                      {assessment.generatedSummary.teamFitRating}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-sm text-muted-foreground leading-relaxed">{assessment.generatedSummary.teamFit}</p>
                               </div>
                             </div>
@@ -368,8 +382,22 @@ export const CandidateStageAssessments = ({
                           {assessment.generatedSummary.teamFit && (
                             <div className="flex gap-2 py-1.5 px-2.5 rounded-md bg-primary/5 border border-primary/10">
                               <Users className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-[10px] font-medium text-primary mb-0.5">Team Fit</p>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between mb-0.5">
+                                  <p className="text-[10px] font-medium text-primary">Team Fit</p>
+                                  {assessment.generatedSummary.teamFitRating && (
+                                    <Badge
+                                      className={`text-[10px] h-4 px-1.5 ${
+                                        assessment.generatedSummary.teamFitRating.includes("Strong") ? "bg-green-600" :
+                                        assessment.generatedSummary.teamFitRating.includes("Good") ? "bg-green-600/80" :
+                                        assessment.generatedSummary.teamFitRating.includes("Partial") ? "bg-yellow-600" :
+                                        "bg-orange-600"
+                                      }`}
+                                    >
+                                      {assessment.generatedSummary.teamFitRating}
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">{assessment.generatedSummary.teamFit}</p>
                               </div>
                             </div>
