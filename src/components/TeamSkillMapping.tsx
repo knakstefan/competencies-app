@@ -31,12 +31,16 @@ const CHART_COLORS = [
   'hsl(30, 80%, 55%)',
 ];
 
+// Scoring weights matching the member Skill Overview chart.
+// Member chart: above/well_above=4.5, target=3, below/well_below=1.5
+// Below target: multiplicative scaling preserves the member chart's shape.
+// Above target: additive scaling (max +1.5) keeps scores below the next level.
 const EVALUATION_SCORES: Record<string, number> = {
-  'well_below': 1,
-  'below': 2,
+  'well_below': 1.5,
+  'below': 1.5,
   'target': 3,
-  'above': 4,
-  'well_above': 5,
+  'above': 4.5,
+  'well_above': 4.5,
 };
 
 interface TeamSkillMappingProps {
@@ -123,7 +127,10 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
         return;
       }
 
-      // Calculate average evaluation score (1-5 scale)
+      // Calculate average score using the same weights as the member Skill Overview chart.
+      // Below target: multiplicative scaling (base * avg/3) preserves the member chart shape.
+      // Above target: additive scaling (base + offset) so max score = base + 1.5,
+      // which is always below the next level's base (base + 2).
       let totalScore = 0;
       let evalCount = 0;
 
@@ -131,17 +138,23 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
         const evaluations = evaluationsByProgress.get(progress._id) || [];
         evaluations.forEach((evaluation) => {
           evalCount++;
-          totalScore += EVALUATION_SCORES[evaluation.evaluation] || 3;
+          totalScore += EVALUATION_SCORES[evaluation.evaluation] ?? 3;
         });
       });
 
       if (evalCount === 0) {
         dataPoint[member.name] = 0;
       } else {
-        const avgEval = totalScore / evalCount;
+        const avgScore = totalScore / evalCount;
         const memberLevelKey = labelToKey(levels, member.role);
         const baseScore = getLevelBaseScore(levels, memberLevelKey);
-        dataPoint[member.name] = baseScore + (avgEval - 3);
+        if (avgScore <= 3) {
+          // Below/at target: multiplicative preserves member chart ratios
+          dataPoint[member.name] = baseScore * (avgScore / 3);
+        } else {
+          // Above target: additive, max +1.5 (stays below next level base of +2)
+          dataPoint[member.name] = baseScore + (avgScore - 3);
+        }
       }
     });
 
@@ -203,7 +216,7 @@ export const TeamSkillMapping = ({ roleId }: TeamSkillMappingProps = {}) => {
             </div>
             <div className="border-t pt-4">
               <p className="text-xs text-muted-foreground">
-                Level-weighted scoring: Base score by level (P1=2, P2=4, P3=6, P4=8, P5=10) adjusted by evaluation (±2 from target)
+                Level-weighted scoring: Base score by level (P1=2, P2=4, P3=6, P4=8, P5=10). Below-target scales down proportionally; above-target adds up to +1.5 (always below next level).
               </p>
             </div>
           </>
