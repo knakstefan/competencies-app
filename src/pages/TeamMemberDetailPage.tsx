@@ -285,8 +285,8 @@ function MemberDetailContent({
   };
 
   return (
-    <Tabs defaultValue="overview">
-      <TabsList className="mb-6">
+    <Tabs className="flex flex-col justify-center" defaultValue="overview">
+      <TabsList className="mb-6 mx-auto">
         <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="plan">Progression Plan</TabsTrigger>
       </TabsList>

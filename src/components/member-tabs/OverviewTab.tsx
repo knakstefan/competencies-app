@@ -672,9 +672,30 @@ export function OverviewTab(props: TabCommonProps) {
             <CardContent>
               <div className="h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={overallSummary?.chartData || []}>
+                  <RadarChart data={overallSummary?.chartData || []} cx="50%" cy="50%" outerRadius="55%">
                     <PolarGrid stroke="hsl(var(--border))" />
-                    <PolarAngleAxis dataKey="competency" tick={{ fill: "hsl(var(--foreground))", fontSize: 11 }} />
+                    <PolarAngleAxis
+                      dataKey="competency"
+                      tick={({ payload, x, y, textAnchor }: any) => {
+                        const label = payload.value as string;
+                        const maxLen = 16;
+                        let lines: string[];
+                        if (label.length <= maxLen) {
+                          lines = [label];
+                        } else {
+                          const mid = label.lastIndexOf(' ', maxLen);
+                          const splitAt = mid > 0 ? mid : maxLen;
+                          lines = [label.slice(0, splitAt), label.slice(splitAt).trimStart()];
+                        }
+                        return (
+                          <text x={x} y={y} textAnchor={textAnchor} fontSize={10} className="fill-muted-foreground">
+                            {lines.map((line, i) => (
+                              <tspan key={i} x={x} dy={i === 0 ? 0 : 12}>{line}</tspan>
+                            ))}
+                          </text>
+                        );
+                      }}
+                    />
                     <PolarRadiusAxis angle={90} domain={[0, 5]} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 9 }} />
                     <Radar name="Skill Level" dataKey="level" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.15} strokeWidth={2} />
                     <Tooltip
