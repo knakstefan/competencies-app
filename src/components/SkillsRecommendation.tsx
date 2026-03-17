@@ -1,15 +1,10 @@
-import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Lightbulb,
   TrendingDown,
   Minus,
-  AlertTriangle,
-  ChevronDown,
-  ShieldCheck,
 } from "lucide-react";
 
 interface SubCompetencyScore {
@@ -54,9 +49,6 @@ interface SkillsRecommendationProps {
 }
 
 export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {}) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [showStrengths, setShowStrengths] = useState(false);
-
   const globalData = useQuery(
     api.teamSkillData.getTeamSkillData,
     roleId ? "skip" : {}
@@ -243,10 +235,11 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
   ).length;
 
   // Group by priority
+  const belowAvgThreshold = 0.55; // ratio below which label is "Below avg" or worse
   const criticalGaps = competencyScores.filter((c) => c.priority === "high");
-  const gaps = competencyScores.filter((c) => c.priority === "medium");
-  const strengths = competencyScores.filter((c) => c.priority === "strength");
-  const notAssessed = competencyScores.filter((c) => c.priority === "not_assessed");
+  const gaps = competencyScores.filter(
+    (c) => c.priority === "medium" && c.avgScore / c.maxScore < belowAvgThreshold
+  );
 
   // Build summary text
   let summaryText: string;
@@ -340,76 +333,11 @@ export const SkillsRecommendation = ({ roleId }: SkillsRecommendationProps = {})
         </div>
       )}
 
-      {/* Expandable: strengths & not-assessed */}
-      {(notAssessed.length > 0 || strengths.length > 0) && (
-        <>
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-1.5 w-full text-left pt-1 border-t border-border/50"
-          >
-            <span className="text-[10px] font-medium text-muted-foreground">
-              {isExpanded ? "Hide" : "Show"} strengths & unassessed
-            </span>
-            <ChevronDown
-              className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`}
-            />
-          </button>
-
-          {isExpanded && (
-            <div className="space-y-4">
-              {/* Not Assessed */}
-              {notAssessed.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1.5">
-                    <AlertTriangle className="h-3 w-3 text-muted-foreground" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Not Assessed
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {notAssessed.map((rec) => (
-                      <span
-                        key={rec.competencyId}
-                        className="text-[10px] text-muted-foreground border border-dashed border-border rounded px-1.5 py-0.5"
-                      >
-                        {rec.competencyTitle}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Team Strengths */}
-              {strengths.length > 0 && (
-                <div className="space-y-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowStrengths(!showStrengths);
-                    }}
-                    className="flex items-center gap-1.5 w-full text-left"
-                  >
-                    <ShieldCheck className="h-3 w-3 text-success" />
-                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      Strengths
-                    </span>
-                    <Badge className="text-[10px] h-4 px-1.5 ml-auto bg-success text-success-foreground hover:bg-success/90">
-                      {strengths.length}
-                    </Badge>
-                    <ChevronDown
-                      className={`h-3 w-3 text-muted-foreground transition-transform ${showStrengths ? "rotate-180" : ""}`}
-                    />
-                  </button>
-                  {showStrengths && (
-                    <div className="space-y-3">
-                      {strengths.map(renderCompetencyItem)}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </>
+      {/* No gaps message */}
+      {criticalGaps.length === 0 && gaps.length === 0 && (
+        <p className="text-xs text-muted-foreground">
+          No skill gaps detected. Team is well-rounded across all assessed competencies.
+        </p>
       )}
     </div>
   );
