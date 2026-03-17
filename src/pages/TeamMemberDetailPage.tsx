@@ -205,7 +205,7 @@ function MemberDetailContent({
 
   const readinessPercent = useMemo(() => {
     if (overallStats.total === 0) return 0;
-    return Math.round(((overallStats.above + overallStats.target) / overallStats.total) * 100);
+    return Math.round(((overallStats.above + overallStats.target * 0.5) / overallStats.total) * 100);
   }, [overallStats]);
 
   const overallTrendLabel = useMemo(() => {
