@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { useToast } from "@/hooks/use-toast";
 import { CandidateProgressView } from "@/components/CandidateProgressView";
+import { CandidateAssessmentSidebar } from "@/components/CandidateAssessmentSidebar";
 import { HiringCandidate } from "@/components/HiringManagement";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,11 @@ const CandidateDetailPage = () => {
           isAdmin={isAdmin}
           onStageChange={handleStageChange}
           roleId={roleId}
+          sidebar={
+            <CandidateAssessmentSidebar
+              candidateId={candidate._id as string}
+            />
+          }
         />
       </div>
     </div>

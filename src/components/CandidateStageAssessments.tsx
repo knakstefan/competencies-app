@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, Trash2, Check, FileText, Loader2, PlayCircle, Sparkles, Users } from "lucide-react";
+import { Plus, Edit, Trash2, Check, FileText, Loader2, PlayCircle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { HiringCandidate, HiringStage } from "./HiringManagement";
 import { SubCompetency as SubCompetencyType } from "@/types/competency";
@@ -275,32 +275,34 @@ export const CandidateStageAssessments = ({
                         </div>
                       </div>
                       {assessment.generatedSummary?.overallNarrative && (
-                        <div className="mt-4 border-t border-border/50 pt-3 space-y-2">
+                        <div className="mt-4 border-t border-border/50 pt-3 space-y-3">
                           <div className="flex gap-2">
                             <Sparkles className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                             <p className="text-sm text-muted-foreground leading-relaxed">{assessment.generatedSummary.overallNarrative}</p>
                           </div>
-                          {assessment.generatedSummary.teamFit && (
-                            <div className="flex gap-2 py-2 px-3 rounded-md bg-primary/5 border border-primary/10">
-                              <Users className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <p className="text-xs font-medium text-primary">Team Fit</p>
-                                  {assessment.generatedSummary.teamFitRating && (
-                                    <Badge
-                                      className={`text-[10px] h-5 ${
-                                        assessment.generatedSummary.teamFitRating.includes("Strong") ? "bg-green-600" :
-                                        assessment.generatedSummary.teamFitRating.includes("Good") ? "bg-green-600/80" :
-                                        assessment.generatedSummary.teamFitRating.includes("Partial") ? "bg-yellow-600" :
-                                        "bg-orange-600"
-                                      }`}
-                                    >
-                                      {assessment.generatedSummary.teamFitRating}
-                                    </Badge>
-                                  )}
+                          {assessment.generatedSummary.strengths?.length > 0 && (
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-semibold text-green-500">Strengths</p>
+                              {assessment.generatedSummary.strengths.map((s: any, idx: number) => (
+                                <div key={idx} className="py-1.5 px-3 rounded-md bg-green-500/5 border border-green-500/10">
+                                  <p className="text-sm font-medium text-green-400">{s.area}</p>
+                                  <p className="text-sm text-muted-foreground mt-0.5">{s.detail}</p>
                                 </div>
-                                <p className="text-sm text-muted-foreground leading-relaxed">{assessment.generatedSummary.teamFit}</p>
-                              </div>
+                              ))}
+                            </div>
+                          )}
+                          {assessment.generatedSummary.concerns?.length > 0 && (
+                            <div className="space-y-1.5">
+                              <p className="text-xs font-semibold text-orange-500">Concerns</p>
+                              {assessment.generatedSummary.concerns.map((c: any, idx: number) => (
+                                <div key={idx} className="py-1.5 px-3 rounded-md bg-orange-500/5 border border-orange-500/10">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <Badge variant="destructive" className="text-xs">{c.rating}</Badge>
+                                    <span className="text-sm font-medium">{c.area}</span>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{c.observation}</p>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
@@ -374,34 +376,9 @@ export const CandidateStageAssessments = ({
                         </div>
                       </div>
                       {assessment.generatedSummary?.overallNarrative && (
-                        <div className="mt-3 border-t border-border/50 pt-3 space-y-2">
-                          <div className="flex gap-2">
-                            <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                            <p className="text-xs text-muted-foreground leading-relaxed">{assessment.generatedSummary.overallNarrative}</p>
-                          </div>
-                          {assessment.generatedSummary.teamFit && (
-                            <div className="flex gap-2 py-1.5 px-2.5 rounded-md bg-primary/5 border border-primary/10">
-                              <Users className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-0.5">
-                                  <p className="text-[10px] font-medium text-primary">Team Fit</p>
-                                  {assessment.generatedSummary.teamFitRating && (
-                                    <Badge
-                                      className={`text-[10px] h-4 px-1.5 ${
-                                        assessment.generatedSummary.teamFitRating.includes("Strong") ? "bg-green-600" :
-                                        assessment.generatedSummary.teamFitRating.includes("Good") ? "bg-green-600/80" :
-                                        assessment.generatedSummary.teamFitRating.includes("Partial") ? "bg-yellow-600" :
-                                        "bg-orange-600"
-                                      }`}
-                                    >
-                                      {assessment.generatedSummary.teamFitRating}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground leading-relaxed">{assessment.generatedSummary.teamFit}</p>
-                              </div>
-                            </div>
-                          )}
+                        <div className="mt-3 border-t border-border/50 pt-3 flex gap-2">
+                          <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+                          <p className="text-xs text-muted-foreground leading-relaxed">{assessment.generatedSummary.overallNarrative}</p>
                         </div>
                       )}
                     </CardContent>

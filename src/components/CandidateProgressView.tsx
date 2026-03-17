@@ -12,6 +12,7 @@ interface CandidateProgressViewProps {
   onDataChange?: () => void;
   onStageChange?: (candidateId: string, newStage: string) => Promise<void>;
   roleId?: string;
+  sidebar?: React.ReactNode;
 }
 
 export const CandidateProgressView = ({
@@ -20,6 +21,7 @@ export const CandidateProgressView = ({
   onDataChange,
   onStageChange,
   roleId,
+  sidebar,
 }: CandidateProgressViewProps) => {
   const globalCompetencies = useQuery(
     api.competencies.list,
@@ -84,19 +86,26 @@ export const CandidateProgressView = ({
         stages={stages || []}
       />
 
-      <CandidateStageAssessments
-        candidate={candidate}
-        isAdmin={isAdmin}
-        competencies={(competencies || []).map((c) => ({
-          _id: c._id,
-          title: c.title,
-          code: c.code || "",
-          orderIndex: c.orderIndex,
-        }))}
-        subCompetencies={subCompetencies || []}
-        onDataChange={onDataChange}
-        stages={stages || []}
-      />
+      <div className={sidebar ? "grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8" : ""}>
+        <CandidateStageAssessments
+          candidate={candidate}
+          isAdmin={isAdmin}
+          competencies={(competencies || []).map((c) => ({
+            _id: c._id,
+            title: c.title,
+            code: c.code || "",
+            orderIndex: c.orderIndex,
+          }))}
+          subCompetencies={subCompetencies || []}
+          onDataChange={onDataChange}
+          stages={stages || []}
+        />
+        {sidebar && (
+          <div className="lg:sticky lg:top-6 lg:self-start">
+            {sidebar}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
