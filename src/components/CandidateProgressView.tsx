@@ -72,6 +72,11 @@ export const CandidateProgressView = ({
     }
   }
 
+  const hasCompletedSummary = assessments?.some(
+    (a: any) => a.status === "completed" && a.generatedSummary
+  );
+  const showSidebar = sidebar && hasCompletedSummary;
+
   if (loading) {
     return <ProgressViewSkeleton />;
   }
@@ -86,7 +91,7 @@ export const CandidateProgressView = ({
         stages={stages || []}
       />
 
-      <div className={sidebar ? "grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8" : ""}>
+      <div className={showSidebar ? "grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8" : ""}>
         <CandidateStageAssessments
           candidate={candidate}
           isAdmin={isAdmin}
@@ -100,7 +105,7 @@ export const CandidateProgressView = ({
           onDataChange={onDataChange}
           stages={stages || []}
         />
-        {sidebar && (
+        {showSidebar && (
           <div className="lg:sticky lg:top-6 lg:self-start">
             {sidebar}
           </div>
