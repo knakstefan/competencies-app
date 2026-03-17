@@ -78,6 +78,8 @@ export interface HiringStage {
 interface CandidateWithStatus extends HiringCandidate {
   currentStageCompleted?: boolean;
   currentStageScore?: number | null;
+  hiringRecommendation?: string | null;
+  teamFitRating?: string | null;
 }
 
 interface HiringManagementProps {
@@ -428,6 +430,33 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                           {candidate.name}
                         </h3>
                         <p className="text-sm text-muted-foreground mb-3">{candidate.targetRole}</p>
+
+                        {/* AI recommendation + team fit */}
+                        {(candidate.hiringRecommendation || candidate.teamFitRating) && (
+                          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+                            {candidate.hiringRecommendation && (
+                              <Badge className={`text-xs ${
+                                candidate.hiringRecommendation.includes("Strong Hire") ? "bg-green-600" :
+                                candidate.hiringRecommendation.includes("Hire") && !candidate.hiringRecommendation.includes("No") ? "bg-green-600/80" :
+                                candidate.hiringRecommendation.includes("Lean Hire") ? "bg-yellow-600" :
+                                candidate.hiringRecommendation.includes("Lean No") ? "bg-orange-600" :
+                                "bg-destructive"
+                              }`}>
+                                {candidate.hiringRecommendation}
+                              </Badge>
+                            )}
+                            {candidate.teamFitRating && (
+                              <Badge variant="outline" className={`text-xs ${
+                                candidate.teamFitRating.includes("Strong") ? "border-green-500/50 text-green-500" :
+                                candidate.teamFitRating.includes("Good") ? "border-green-500/40 text-green-500/80" :
+                                candidate.teamFitRating.includes("Partial") ? "border-yellow-500/50 text-yellow-500" :
+                                "border-orange-500/50 text-orange-500"
+                              }`}>
+                                {candidate.teamFitRating}
+                              </Badge>
+                            )}
+                          </div>
+                        )}
 
                         {/* Footer: assessment status */}
                         <div className="mt-auto pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">

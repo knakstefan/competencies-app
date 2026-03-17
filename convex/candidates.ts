@@ -10,28 +10,35 @@ export const list = query({
   },
 });
 
+function enrichCandidate(candidate: any, assessments: any[]) {
+  const currentStageAssessment = assessments.find(
+    (a: any) => a.stage === candidate.currentStage && a.status === "completed"
+  );
+  const latestWithSummary = assessments
+    .filter((a: any) => a.status === "completed" && a.generatedSummary)
+    .sort((a: any, b: any) => (b.completedAt || "").localeCompare(a.completedAt || ""))[0];
+
+  return {
+    ...candidate,
+    currentStageCompleted: !!currentStageAssessment,
+    currentStageScore: currentStageAssessment?.overallScore ?? null,
+    hiringRecommendation: latestWithSummary?.generatedSummary?.hiringRecommendation ?? null,
+    teamFitRating: latestWithSummary?.generatedSummary?.teamFitRating ?? null,
+  };
+}
+
 export const listWithAssessmentStatus = query({
   args: {},
   handler: async (ctx) => {
     await requireAuth(ctx);
     const candidates = await ctx.db.query("hiringCandidates").collect();
-
     return Promise.all(
       candidates.map(async (candidate) => {
         const assessments = await ctx.db
           .query("candidateAssessments")
           .withIndex("by_candidateId", (q) => q.eq("candidateId", candidate._id))
           .collect();
-
-        const currentStageAssessment = assessments.find(
-          (a) => a.stage === candidate.currentStage && a.status === "completed"
-        );
-
-        return {
-          ...candidate,
-          currentStageCompleted: !!currentStageAssessment,
-          currentStageScore: currentStageAssessment?.overallScore ?? null,
-        };
+        return enrichCandidate(candidate, assessments);
       })
     );
   },
@@ -45,23 +52,13 @@ export const listWithAssessmentStatusByRole = query({
       .query("hiringCandidates")
       .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
       .collect();
-
     return Promise.all(
       candidates.map(async (candidate) => {
         const assessments = await ctx.db
           .query("candidateAssessments")
           .withIndex("by_candidateId", (q) => q.eq("candidateId", candidate._id))
           .collect();
-
-        const currentStageAssessment = assessments.find(
-          (a) => a.stage === candidate.currentStage && a.status === "completed"
-        );
-
-        return {
-          ...candidate,
-          currentStageCompleted: !!currentStageAssessment,
-          currentStageScore: currentStageAssessment?.overallScore ?? null,
-        };
+        return enrichCandidate(candidate, assessments);
       })
     );
   },
