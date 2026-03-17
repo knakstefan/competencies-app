@@ -123,6 +123,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<HiringCandidate | null>(null);
   const [deletingCandidate, setDeletingCandidate] = useState<HiringCandidate | null>(null);
+  const [statusFilter, setStatusFilter] = useState<"active" | "hired" | "rejected" | "all">("active");
   const { toast } = useToast();
 
   // Auto-seed default stages if empty
@@ -196,6 +197,14 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
   ).length;
   const hiredCount = candidateList.filter((c) => c.currentStage === "hired").length;
   const rejectedCount = candidateList.filter((c) => c.currentStage === "rejected").length;
+
+  const filteredCandidates = statusFilter === "active"
+    ? candidateList.filter((c) => !isTerminalStage(c.currentStage))
+    : statusFilter === "hired"
+    ? candidateList.filter((c) => c.currentStage === "hired")
+    : statusFilter === "rejected"
+    ? candidateList.filter((c) => c.currentStage === "rejected")
+    : candidateList;
 
   // Empty state
   if (candidateList.length === 0) {
@@ -327,20 +336,40 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                   {candidateList.length} {candidateList.length === 1 ? "Candidate" : "Candidates"}
                 </span>
                 <div className="w-px h-3.5 bg-border" />
-                <span className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "active" ? "text-primary" : "hover:text-foreground"}`}
+                >
                   <Clock className="w-3.5 h-3.5" />
                   {activeCount} Active
-                </span>
+                </button>
                 <div className="w-px h-3.5 bg-border" />
-                <span className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setStatusFilter(statusFilter === "hired" ? "all" : "hired")}
+                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "hired" ? "text-primary" : "hover:text-foreground"}`}
+                >
                   <CircleCheck className="w-3.5 h-3.5" />
                   {hiredCount} Hired
-                </span>
+                </button>
                 <div className="w-px h-3.5 bg-border" />
-                <span className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setStatusFilter(statusFilter === "rejected" ? "all" : "rejected")}
+                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "rejected" ? "text-primary" : "hover:text-foreground"}`}
+                >
                   <CircleX className="w-3.5 h-3.5" />
                   {rejectedCount} Rejected
-                </span>
+                </button>
+                {statusFilter !== "all" && (
+                  <>
+                    <div className="w-px h-3.5 bg-border" />
+                    <button
+                      onClick={() => setStatusFilter("all")}
+                      className="text-xs hover:text-foreground transition-colors"
+                    >
+                      Show all
+                    </button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -348,7 +377,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 mt-8">
             {/* Candidate cards grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
-              {candidateList.map((candidate, index) => (
+              {filteredCandidates.map((candidate, index) => (
                   <div
                     key={candidate._id}
                     className="animate-fade-up group"
@@ -491,7 +520,7 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
                   <button
                     onClick={() => setIsFormOpen(true)}
                     className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
-                    style={{ animationDelay: `${candidateList.length * 80}ms` }}
+                    style={{ animationDelay: `${filteredCandidates.length * 80}ms` }}
                   >
                     <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
                       <Plus className="w-5 h-5" />
