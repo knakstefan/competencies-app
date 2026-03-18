@@ -61,7 +61,6 @@ export const RoleBreadcrumb = () => {
           <BreadcrumbLink asChild>
             <Link to="/" className="flex items-center gap-1">
               <Home className="w-3.5 h-3.5" />
-              Roles
             </Link>
           </BreadcrumbLink>
         </BreadcrumbItem>

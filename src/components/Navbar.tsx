@@ -36,50 +36,53 @@ export const Navbar = ({ onSignOut }: NavbarProps) => {
     <nav className="border-b bg-card/50 backdrop-blur-sm">
       <div className="container mx-auto px-8">
         <div className="flex items-center justify-between h-14">
-          <Link to="/" className="flex items-center shrink-0">
-            <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
-          </Link>
+          <div className="flex gap-8">
+            <Link to="/" className="flex items-center shrink-0">
+              <img src={cmLogo} alt="CM Logo" className="h-8 w-auto" />
+            </Link>
 
-          <div className="flex items-center gap-1">
-            {navLinks.map((link) => (
-              <Button
-                key={link.to}
-                variant="ghost"
-                size="sm"
-                asChild
-                className={link.match(location.pathname) ? "text-foreground" : "text-muted-foreground"}
-              >
-                <Link to={link.to}>{link.label}</Link>
-              </Button>
-            ))}
+            <div className="flex items-center gap-3">
+              {navLinks.map((link) => (
+                <Button
+                  key={link.to}
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className={link.match(location.pathname) ? "text-foreground" : "text-muted-foreground"}
+                >
+                  <Link to={link.to}>{link.label}</Link>
+                </Button>
+              ))}
 
-            {isAdmin && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`gap-1 ${isAdminRoute ? "text-foreground" : "text-muted-foreground"}`}
-                  >
-                    Hiring
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="center" className="w-48">
-                  {adminLinks.map((link) => (
-                    <DropdownMenuItem
-                      key={link.to}
-                      onClick={() => navigate(link.to)}
-                      className="flex items-center gap-2 cursor-pointer"
+              {isAdmin && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`gap-1 ${isAdminRoute ? "text-foreground" : "text-muted-foreground"}`}
                     >
-                      <link.icon className="h-4 w-4" />
-                      {link.label}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                      Hiring
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="center" className="w-48">
+                    {adminLinks.map((link) => (
+                      <DropdownMenuItem
+                        key={link.to}
+                        onClick={() => navigate(link.to)}
+                        className="flex items-center gap-2 cursor-pointer"
+                      >
+                        <link.icon className="h-4 w-4" />
+                        {link.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
+
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -72,11 +72,11 @@ const TeamMemberDetailPage = () => {
       <div className="relative z-10 max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="animate-fade-up">
-          <div className="flex items-center justify-center gap-3">
-            <h1 className="text-2xl font-semibold">{member.name}</h1>
+          <div className="text-center space-y-3 animate-fade-up">
             <Badge variant="outline" className="text-xs">
               {member.role}
             </Badge>
+          <h1 className="text-4xl font-bold gradient-heading">{member.name}</h1>
           </div>
           <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground mt-2">
             <span className="flex items-center gap-1.5">
