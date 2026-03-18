@@ -2,7 +2,6 @@ import { useState } from "react";
 import { CompetencyEditor } from "@/components/CompetencyEditor";
 import { CompetencyExportDialog } from "@/components/CompetencyExportDialog";
 import { CompetencyImportDialog } from "@/components/CompetencyImportDialog";
-import { FrameworkHealth } from "@/components/FrameworkHealth";
 import { Competency, SubCompetency } from "@/types/competency";
 import { Button } from "@/components/ui/button";
 import {
@@ -318,8 +317,6 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
               Add Competency
             </Button>
           </div>
-
-          <FrameworkHealth competencies={competencies} subCompetencies={subCompetencies} levels={levels} />
 
           <DndContext
             sensors={sensors}

@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Pencil, SlidersVertical, Plus, Upload, Sparkles, Layers, ListTree } from "lucide-react";
+import { Loader2, Pencil, Eye, Plus, Upload, Sparkles, Layers, ListTree } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
@@ -53,10 +53,11 @@ const CompetenciesPage = () => {
   const handleAddCompetency = async () => {
     try {
       const validated = competencySchema.parse(formData);
+      const maxOrderIndex = competencies.length > 0 ? Math.max(...competencies.map((c) => c.orderIndex)) : 0;
       await createMutation({
         title: validated.title,
         description: validated.description || undefined,
-        orderIndex: 1,
+        orderIndex: maxOrderIndex + 1,
         ...(roleId ? { roleId } : {}),
       });
       toast({ title: "Success", description: "Competency added successfully" });
@@ -73,6 +74,49 @@ const CompetenciesPage = () => {
 
   const roleTitle = role?.title;
   const isEmpty = competencies.length === 0;
+
+  // Shared add dialog — used by both empty state and populated state
+  const addDialog = (
+    <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add New Competency</DialogTitle>
+          <DialogDescription>Enter the details for the new competency.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="comp-title">
+              Title <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="comp-title"
+              placeholder="e.g., Visual Design"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="comp-description">Description (Optional)</Label>
+            <Textarea
+              id="comp-description"
+              placeholder="Provide a brief description of this competency..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={4}
+              className="resize-none"
+            />
+            <p className="text-xs text-muted-foreground">{formData.description.length}/1000 characters</p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleAddCompetency}>Add Competency</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 
   // Empty state
   if (isEmpty) {
@@ -152,45 +196,7 @@ const CompetenciesPage = () => {
           </div>
         </div>
 
-        <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Competency</DialogTitle>
-              <DialogDescription>Enter the details for the new competency.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="empty-title">
-                  Title <span className="text-destructive">*</span>
-                </Label>
-                <Input
-                  id="empty-title"
-                  placeholder="e.g., Visual Design"
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="empty-description">Description (Optional)</Label>
-                <Textarea
-                  id="empty-description"
-                  placeholder="Provide a brief description of this competency..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={4}
-                  className="resize-none"
-                />
-                <p className="text-xs text-muted-foreground">{formData.description.length}/1000 characters</p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleAddCompetency}>Add Competency</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {addDialog}
 
         <CompetencyImportDialog
           open={importDialogOpen}
@@ -238,8 +244,8 @@ const CompetenciesPage = () => {
                 Manage
               </TabsTrigger>
               <TabsTrigger value="levels" className="flex items-center gap-2">
-                <SlidersVertical className="w-3.5 h-3.5" />
-                Levels
+                <Eye className="w-3.5 h-3.5" />
+                By Level
               </TabsTrigger>
             </TabsList>
           </div>
