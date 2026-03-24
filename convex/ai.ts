@@ -968,6 +968,73 @@ export const generateInterviewQuestions = action({
       return `${comp.title}: ${subs.join(", ")}`;
     }).join("\n");
 
+    // Build team skill gaps context to focus questions on areas the team needs
+    let teamSkillGaps: { competency: string; avgScore: number; priority: string }[] = [];
+    try {
+      const skillData: any = await ctx.runQuery(
+        api.teamSkillData.getTeamSkillDataByRole, { roleId: args.roleId }
+      );
+
+      if (skillData && skillData.members.length > 0) {
+        const evalScores: Record<string, number> = {
+          well_below: 1, below: 2, target: 3, above: 4, well_above: 5,
+        };
+
+        const evalsByProgress = new Map<string, any[]>();
+        skillData.allEvaluations.forEach((e: any) => {
+          if (!evalsByProgress.has(e.progressId)) evalsByProgress.set(e.progressId, []);
+          evalsByProgress.get(e.progressId)!.push(e);
+        });
+
+        const subToComp = new Map<string, string>();
+        skillData.subCompetencies.forEach((sc: any) => subToComp.set(sc._id, sc.competencyId));
+
+        for (const comp of skillData.competencies) {
+          let compTotal = 0;
+          let memberCount = 0;
+
+          for (const member of skillData.members) {
+            const assessmentId = skillData.latestAssessmentByMember[member._id];
+            if (!assessmentId) continue;
+
+            const memberProgress = skillData.allProgress.filter(
+              (p: any) => p.assessmentId === assessmentId && subToComp.get(p.subCompetencyId) === comp._id
+            );
+            if (memberProgress.length === 0) continue;
+
+            let total = 0;
+            let count = 0;
+            for (const p of memberProgress) {
+              const evals = evalsByProgress.get(p._id) || [];
+              for (const e of evals) {
+                total += evalScores[e.evaluation] || 3;
+                count++;
+              }
+            }
+            if (count > 0) {
+              compTotal += total / count;
+              memberCount++;
+            }
+          }
+
+          if (memberCount > 0) {
+            const avg = compTotal / memberCount;
+            let priority = "strength";
+            if (avg < 2.5) priority = "critical_gap";
+            else if (avg < 3.5) priority = "needs_strengthening";
+            teamSkillGaps.push({ competency: comp.title, avgScore: Math.round(avg * 100) / 100, priority });
+          }
+        }
+
+        // Only keep gaps, sorted weakest first
+        teamSkillGaps = teamSkillGaps
+          .filter((g) => g.priority !== "strength")
+          .sort((a, b) => a.avgScore - b.avgScore);
+      }
+    } catch {
+      // Non-critical — continue without team gaps context
+    }
+
     const systemPrompt = `You are an expert interviewer with deep knowledge across all professional disciplines. Generate structured interview questions tailored to the specific role, interview stage, the candidate's target level, and the role's competency framework.
 
 The STAGE INSTRUCTIONS define the purpose, focus areas, question style, and categories for this specific interview. Follow them closely — they are the primary guide for what to generate.
@@ -988,7 +1055,8 @@ Requirements:
 - Adapt question complexity and depth to the candidate's target level
 - Each signal should describe what a strong answer demonstrates and what separates good from great
 - Questions should feel natural and conversational, not like a checklist
-- Where the stage instructions reference the competency framework, incorporate specific competency areas into questions`;
+- Where the stage instructions reference the competency framework, incorporate specific competency areas into questions
+- If TEAM SKILL GAPS are provided, ensure at least 2-3 questions specifically probe those gap areas to evaluate whether the candidate can strengthen the team's weaknesses. Weave these naturally into the relevant categories — do not create a separate "Team Gaps" category`;
 
     const userPrompt = `Generate interview questions for this stage:
 
@@ -1003,7 +1071,11 @@ ROLE: ${role.title} (${role.type})
 COMPETENCY FRAMEWORK:
 ${frameworkSummary}
 
-Generate questions that probe the candidate's abilities relevant to this stage and their target level of "${candidate.targetRole}".`;
+Generate questions that probe the candidate's abilities relevant to this stage and their target level of "${candidate.targetRole}".
+${teamSkillGaps.length > 0 ? `
+TEAM SKILL GAPS (current team weaknesses — prioritize questions that probe these areas):
+${JSON.stringify(teamSkillGaps, null, 2)}
+Ensure at least 2-3 questions specifically evaluate the candidate's strength in these gap areas.` : ""}`;
 
     const client = createAnthropicClient();
 
