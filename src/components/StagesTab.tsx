@@ -17,7 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, ChevronUp, ChevronDown, Pencil, Trash2, Sparkles, ExternalLink } from "lucide-react";
+import { Plus, ChevronUp, ChevronDown, Pencil, Trash2, Sparkles, ExternalLink, RotateCcw } from "lucide-react";
 import { StageEditor } from "./StageEditor";
 
 interface HiringStage {
@@ -42,10 +42,12 @@ export const StagesTab = ({ roleId, stages, isAdmin }: StagesTabProps) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingStage, setEditingStage] = useState<HiringStage | null>(null);
   const [deletingStage, setDeletingStage] = useState<HiringStage | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const { toast } = useToast();
 
   const removeStage = useMutation(api.hiringStages.remove);
   const reorderStage = useMutation(api.hiringStages.reorder);
+  const resetToGlobal = useMutation(api.hiringStages.resetToGlobal);
 
   const handleDelete = async () => {
     if (!deletingStage) return;
@@ -56,6 +58,16 @@ export const StagesTab = ({ roleId, stages, isAdmin }: StagesTabProps) => {
       toast({ title: "Error", description: "Failed to delete stage", variant: "destructive" });
     }
     setDeletingStage(null);
+  };
+
+  const handleReset = async () => {
+    try {
+      await resetToGlobal({ roleId });
+      toast({ title: "Success", description: "Stages reset to global pipeline defaults" });
+    } catch {
+      toast({ title: "Error", description: "Failed to reset stages", variant: "destructive" });
+    }
+    setShowResetConfirm(false);
   };
 
   const handleMoveUp = async (stage: HiringStage, index: number) => {
@@ -110,6 +122,17 @@ export const StagesTab = ({ roleId, stages, isAdmin }: StagesTabProps) => {
         <Link to="/pipeline" className="text-primary hover:underline inline-flex items-center gap-1">
           Manage Pipeline <ExternalLink className="w-3 h-3" />
         </Link>
+        {isAdmin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-7 text-xs text-muted-foreground"
+            onClick={() => setShowResetConfirm(true)}
+          >
+            <RotateCcw className="w-3 h-3 mr-1" />
+            Reset to Global
+          </Button>
+        )}
       </div>
 
       <div className="space-y-3">
@@ -230,6 +253,21 @@ export const StagesTab = ({ roleId, stages, isAdmin }: StagesTabProps) => {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset to Global Pipeline</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will replace all hiring stages for this role with the current global pipeline defaults. Any custom changes to stage titles, descriptions, or AI instructions will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReset}>Reset Stages</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

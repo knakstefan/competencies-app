@@ -232,6 +232,44 @@ export const backfillStageData = internalMutation({
   },
 });
 
+export const resetToGlobal = mutation({
+  args: { roleId: v.id("roles") },
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
+    // Fetch current global stages
+    const globalStages = await ctx.db.query("globalStages").collect();
+    const sortedGlobal = globalStages.sort((a, b) => a.orderIndex - b.orderIndex);
+    if (sortedGlobal.length === 0) {
+      throw new Error("No global stages defined. Configure the global pipeline first.");
+    }
+
+    // Delete all existing role stages
+    const existing = await ctx.db
+      .query("hiringStages")
+      .withIndex("by_roleId", (q) => q.eq("roleId", args.roleId))
+      .collect();
+    for (const stage of existing) {
+      await ctx.db.delete(stage._id);
+    }
+
+    // Re-copy from global stages
+    for (const gs of sortedGlobal) {
+      await ctx.db.insert("hiringStages", {
+        roleId: args.roleId,
+        title: gs.title,
+        description: gs.description,
+        stageType: gs.stageType,
+        aiInstructions: gs.aiInstructions,
+        gateMinScore: gs.gateMinScore,
+        gateMinRatedPct: gs.gateMinRatedPct,
+        orderIndex: gs.orderIndex,
+        globalStageId: gs._id,
+      });
+    }
+  },
+});
+
 export const seedDefaults = mutation({
   args: { roleId: v.id("roles") },
   handler: async (ctx, args) => {
