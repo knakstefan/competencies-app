@@ -92,7 +92,7 @@ Criteria evaluations use a 5-point scale: `well_below` (1), `below` (2), `target
 
 **Convex Dashboard (server-side)**:
 - `CLERK_JWT_ISSUER_DOMAIN` — Clerk issuer domain (used in `convex/auth.config.ts`)
-- `OPENAI_API_KEY` — Used by `convex/ai.ts` for promotion plan generation
+- `ANTHROPIC_API_KEY` — Used by `convex/ai.ts` for AI features (promotion plans, interview questions, summaries)
 
 ## Deployment
 
