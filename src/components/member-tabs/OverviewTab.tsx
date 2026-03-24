@@ -58,6 +58,7 @@ import { api } from "../../../convex/_generated/api";
 import { Id } from "../../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
 import { keyToLabel } from "@/lib/levelUtils";
+import { getRatingOption } from "@/lib/ratingConstants";
 import type { TabCommonProps, Competency, SubCompetency } from "./types";
 
 export function OverviewTab(props: TabCommonProps) {
@@ -103,6 +104,18 @@ export function OverviewTab(props: TabCommonProps) {
   const removeAssessment = useMutation(api.assessments.remove);
 
   const hasCompletedAssessments = completedAssessments.length > 0;
+  const latestSummary = completedAssessments[0]?.generatedSummary as {
+    overallNarrative?: string;
+    strengths?: Array<{ competency: string; detail: string }>;
+    areasNeedingSupport?: Array<{
+      competency: string;
+      subCompetency: string;
+      criterion: string;
+      rating: string;
+      guidance: string;
+    }>;
+    overallReadiness?: string;
+  } | undefined;
 
   // Assessment logic
   const draftAssessment = sortedAssessments.find((a: any) => a.status === "draft");
@@ -365,17 +378,70 @@ export function OverviewTab(props: TabCommonProps) {
             </button>
           ) : null}
 
-          {/* AI executive summary */}
-          {planContent?.summary && (
-            <Card className="bg-primary/5 border-primary/15">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">AI Analysis</span>
+          {/* AI Assessment Summary */}
+          {latestSummary?.overallNarrative && (
+            <Card className="relative overflow-hidden bg-primary/8 border-primary/25">
+              <div className="h-0.5 bg-gradient-knak" />
+              <CardHeader className="pb-0 px-5 pt-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    AI Assessment Summary
+                  </CardTitle>
+                  {completedAssessments[0]?.completedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(completedAssessments[0].completedAt), "MMMM yyyy")} assessment
+                    </span>
+                  )}
                 </div>
+              </CardHeader>
+              <CardContent className="px-5 pb-5 pt-3 space-y-5">
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  {planContent.summary}
+                  {latestSummary.overallNarrative}
                 </p>
+
+                {latestSummary.strengths && latestSummary.strengths.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-border/30">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-green-500">Strengths</span>
+                    <div className="space-y-1.5">
+                      {latestSummary.strengths.map((s, i) => (
+                        <div key={i} className="text-sm pl-3 border-l-2 border-green-500/30">
+                          <span className="font-medium text-foreground">{s.competency}</span>
+                          <span className="text-muted-foreground"> — {s.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {latestSummary.areasNeedingSupport && latestSummary.areasNeedingSupport.length > 0 && (
+                  <div className="space-y-2 pt-1 border-t border-border/30">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-orange-500">Focus Areas</span>
+                    <div className="space-y-2.5">
+                      {latestSummary.areasNeedingSupport.map((a, i) => (
+                        <div key={i} className="text-sm pl-3 border-l-2 border-orange-500/30 space-y-0.5">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs text-orange-500 border-orange-500/40 shrink-0">
+                              {getRatingOption(a.rating)?.label || a.rating}
+                            </Badge>
+                            <span className="font-medium text-foreground">{a.competency}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{a.subCompetency} · {a.criterion}</p>
+                          {a.guidance && (
+                            <p className="text-xs text-muted-foreground/80">{a.guidance}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {latestSummary.overallReadiness && (
+                  <div className="space-y-1.5 pt-3 border-t border-border/40">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-primary">Readiness</span>
+                    <p className="text-sm text-muted-foreground">{latestSummary.overallReadiness}</p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
