@@ -7,6 +7,17 @@ import Anthropic from "@anthropic-ai/sdk";
 import { requireAuthAction } from "./auth.helpers";
 import { IC_DEFAULT_LEVELS, MANAGEMENT_DEFAULT_LEVELS } from "./roleLevels";
 
+function createAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "ANTHROPIC_API_KEY environment variable is not set. " +
+      "Add it in the Convex dashboard under Settings → Environment Variables."
+    );
+  }
+  return new Anthropic({ apiKey });
+}
+
 export const generatePromotionPlan = action({
   args: {
     memberId: v.id("teamMembers"),
@@ -311,10 +322,10 @@ REQUIREMENTS:
 - Reference trends in the summary when available`;
 
     // Call Anthropic Claude
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: systemPrompt,
       messages: [
@@ -500,7 +511,7 @@ REQUIREMENTS:
 - Do not include compensation, benefits, or company-specific information
 - Keep the tone professional yet approachable`;
 
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
     const response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
@@ -663,10 +674,10 @@ ${frameworkJson}
 
 Generate 2-3 discussion prompts per sub-competency that help the manager evaluate performance against these specific criteria.`;
 
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 3000,
       system: systemPrompt,
       messages: [
@@ -866,10 +877,10 @@ ${JSON.stringify(belowTargetItems, null, 2)}` : "No below-target items — all c
 
 Generate the assessment summary JSON.`;
 
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 3000,
       system: systemPrompt,
       messages: [
@@ -994,38 +1005,50 @@ ${frameworkSummary}
 
 Generate questions that probe the candidate's abilities relevant to this stage and their target level of "${candidate.targetRole}".`;
 
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
-    const response = await client.messages.create({
-      model: "claude-opus-4-6",
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: userPrompt },
-      ],
-    });
+    let response;
+    try {
+      response = await client.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: [
+          { role: "user", content: userPrompt },
+        ],
+      });
+    } catch (err: any) {
+      throw new Error(`Anthropic API error: ${err?.message || String(err)}`);
+    }
 
     const content = response.content[0]?.type === "text" ? response.content[0].text : null;
     if (!content) throw new Error("No response from Anthropic");
 
+    // Strip code fences if present
+    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
+    const jsonStr = jsonMatch ? jsonMatch[1] : content;
+    let parsed;
     try {
-      // Strip code fences if present
-      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/```\s*([\s\S]*?)\s*```/);
-      const jsonStr = jsonMatch ? jsonMatch[1] : content;
-      const parsed = JSON.parse(jsonStr);
-      const questions = parsed.questions;
-      if (!Array.isArray(questions) || questions.length === 0) {
-        throw new Error("Invalid questions format");
-      }
-      // Validate and sanitize
-      return questions.map((q: any) => ({
-        category: String(q.category || "General"),
-        question: String(q.question || ""),
-        signal: String(q.signal || ""),
-      })).filter((q: any) => q.question.length > 0);
+      parsed = JSON.parse(jsonStr);
     } catch {
-      throw new Error("Failed to parse AI-generated questions");
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        parsed = JSON.parse(objectMatch[0]);
+      } else {
+        throw new Error("Failed to parse AI response as JSON");
+      }
     }
+
+    const questions = parsed.questions;
+    if (!Array.isArray(questions) || questions.length === 0) {
+      throw new Error("Invalid questions format — expected a non-empty questions array");
+    }
+    // Validate and sanitize
+    return questions.map((q: any) => ({
+      category: String(q.category || "General"),
+      question: String(q.question || ""),
+      signal: String(q.signal || ""),
+    })).filter((q: any) => q.question.length > 0);
   },
 });
 
@@ -1217,8 +1240,9 @@ Return ONLY valid JSON matching this exact structure:
 }
 
 IMPORTANT RULES:
-- For strengths, identify the top 2-3 areas based on highest average scores and strongest notes
-- For concerns, include ONLY items rated Below or Well Below — do not invent items
+- You MUST only reference questions that appear verbatim in the ALL RESPONSES data. Do not rephrase, paraphrase, or invent questions. Copy question text exactly as provided.
+- For strengths, identify the top 2-3 areas based on highest average scores and strongest notes. Base your analysis only on the data in ALL RESPONSES.
+- For concerns, include ONLY items from the BELOW-TARGET ITEMS list — use the exact question text provided, do not paraphrase or substitute. Do not invent concerns for questions not in the data.
 - If there are no below-target items, return an empty concerns array
 - The hiringRecommendation should follow this rubric:
   - Strong Hire: Average >= 4.0, no below-target items
@@ -1261,10 +1285,10 @@ ${JSON.stringify(teamSkillGaps, null, 2)}
 Evaluate whether this candidate's strengths align with the skills the team currently lacks.` : ""}
 Generate the hiring assessment summary JSON.`;
 
-    const client = new Anthropic();
+    const client = createAnthropicClient();
 
     const response = await client.messages.create({
-      model: "claude-opus-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: 3000,
       system: systemPrompt,
       messages: [
@@ -1290,6 +1314,9 @@ Generate the hiring assessment summary JSON.`;
       }
     }
 
+    // Build set of actual question texts for validation
+    const actualQuestions = new Set(normalized.map((r) => r.question.toLowerCase().trim()));
+
     // Validate and sanitize
     const summary = {
       overallNarrative: String(parsed.overallNarrative || "Assessment summary generated."),
@@ -1305,7 +1332,10 @@ Generate the hiring assessment summary JSON.`;
             question: String(c.question || ""),
             rating: String(c.rating || ""),
             observation: String(c.observation || ""),
-          })).filter((c: any) => c.area.length > 0)
+          })).filter((c: any) =>
+            c.area.length > 0 &&
+            actualQuestions.has(String(c.question || "").toLowerCase().trim())
+          )
         : [],
       hiringRecommendation: String(parsed.hiringRecommendation || "Lean Hire"),
       ...(parsed.teamFitRating ? { teamFitRating: String(parsed.teamFitRating) } : {}),
