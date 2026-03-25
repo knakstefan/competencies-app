@@ -287,6 +287,16 @@ export const ManagerInterviewWizard = ({
           .filter((item) => item.question.category === cat),
       }));
 
+      // Seed stored AI summary so it doesn't regenerate unnecessarily
+      if (assessment?.generatedSummary) {
+        setGeneratedSummary(assessment.generatedSummary);
+        // Compute fingerprint matching assessmentFingerprint format (category-grouped order)
+        const loadedFingerprint = localCategorySteps.flatMap((step) =>
+          step.questions.map((q) => `${q.origIdx}:${responseMap[q.origIdx]?.rating || ""}`)
+        ).join("|");
+        setSummaryDataKey(loadedFingerprint);
+      }
+
       if (assessment?.status === "completed") {
         setCurrentStep(localCategorySteps.length); // summary step
       } else {
