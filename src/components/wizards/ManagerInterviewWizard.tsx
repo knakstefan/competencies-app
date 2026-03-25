@@ -83,7 +83,7 @@ export const ManagerInterviewWizard = ({
   const [initializing, setInitializing] = useState(false);
   const [overallImpression, setOverallImpression] = useState("");
   const [showIncompleteWarning, setShowIncompleteWarning] = useState(false);
-  const [hoveredRating, setHoveredRating] = useState<string | null>(null);
+  const [hoveredRating, setHoveredRating] = useState<Record<number, string | null>>({});
   const [generatedSummary, setGeneratedSummary] = useState<any>(null);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [summaryDataKey, setSummaryDataKey] = useState<string | null>(null);
@@ -176,7 +176,7 @@ export const ManagerInterviewWizard = ({
       setResponses({});
       setAssessmentId(null);
       setOverallImpression("");
-      setHoveredRating(null);
+      setHoveredRating({});
       setAiQuestions(null);
       setGeneratingQuestions(false);
       setGeneratedSummary(null);
@@ -333,14 +333,15 @@ export const ManagerInterviewWizard = ({
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
     }
-    const step = categoryStepsRef.current[currentStepRef.current];
-    if (!step) return;
-    for (const q of step.questions) {
-      const r = responsesRef.current[q.origIdx];
-      if (r) {
-        await saveResponse(q.origIdx, r.responseNotes || "", r.rating);
-      }
-    }
+    if (dirtyRef.current.size === 0) return;
+    const toFlush = Array.from(dirtyRef.current);
+    dirtyRef.current.clear();
+    await Promise.all(
+      toFlush.map((origIdx) => {
+        const r = responsesRef.current[origIdx];
+        if (r) return saveResponse(origIdx, r.responseNotes || "", r.rating);
+      })
+    );
   };
 
   // Called by nav rail dots — supports same-step scrolling and cross-step navigation
@@ -348,7 +349,7 @@ export const ManagerInterviewWizard = ({
     await flushAllDirtyResponses();
     const sameStep = step === currentStep;
     setCurrentStep(step);
-    setHoveredRating(null);
+    setHoveredRating({});
     if (subId && sameStep) {
       const el = document.getElementById(subId);
       if (el) el.scrollIntoView({ behavior: "instant", block: "start" });
@@ -380,7 +381,7 @@ export const ManagerInterviewWizard = ({
     if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
       setScrollTarget("__top__");
-      setHoveredRating(null);
+      setHoveredRating({});
     }
   };
 
@@ -389,7 +390,7 @@ export const ManagerInterviewWizard = ({
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
       setScrollTarget("__top__");
-      setHoveredRating(null);
+      setHoveredRating({});
     }
   };
 
@@ -546,11 +547,6 @@ export const ManagerInterviewWizard = ({
     });
   }, [currentStep, isSummaryStep, currentCategoryStep, generatingQuestions]);
 
-  // Current category for dialog header
-  const currentCategory = isSummaryStep
-    ? "Review"
-    : currentCategoryStep?.category ?? "";
-
   // Build nav rail data: flat list with stepIndex and subId per question
   const navQuestions = categorySteps.flatMap((step, stepIdx) =>
     step.questions.map((q) => ({
@@ -665,7 +661,7 @@ export const ManagerInterviewWizard = ({
               <div key={currentStep} className="animate-fade-up">
                 {currentCategoryStep.questions.map((item) => {
                   const resp = responses[item.origIdx] || { rating: "target", responseNotes: "" };
-                  const activeRatingValue = hoveredRating || resp.rating;
+                  const activeRatingValue = hoveredRating[item.origIdx] || resp.rating;
                   const activeHint = activeRatingValue
                     ? RATING_OPTIONS.find((o) => o.value === activeRatingValue)?.hint
                     : null;
@@ -690,8 +686,8 @@ export const ManagerInterviewWizard = ({
                                 key={opt.value}
                                 value={opt.value}
                                 className={`text-xs px-1 ${opt.colorClass}`}
-                                onMouseEnter={() => setHoveredRating(opt.value)}
-                                onMouseLeave={() => setHoveredRating(null)}
+                                onMouseEnter={() => setHoveredRating(prev => ({ ...prev, [item.origIdx]: opt.value }))}
+                                onMouseLeave={() => setHoveredRating(prev => ({ ...prev, [item.origIdx]: null }))}
                               >
                                 {opt.label}
                               </TabsTrigger>
