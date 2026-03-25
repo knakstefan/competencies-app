@@ -5,7 +5,6 @@ import { api } from "../../convex/_generated/api";
 import { useAuth } from "@/hooks/useAuth";
 import { RoleCard } from "@/components/RoleCard";
 import { CreateRoleDialog } from "@/components/CreateRoleDialog";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +15,7 @@ import {
   Plus,
   Clock,
   Check,
-  ArrowRight,
+  ChevronRight,
   AlertCircle,
   ClipboardCheck,
   Sparkles,
@@ -132,10 +131,10 @@ const HomePage = () => {
             >
               <Button
                 onClick={() => setRoleDialogOpen(true)}
-                size="lg"
-                className="rounded-full px-8 h-12 text-base"
+                size="sm"
+                className="rounded-full px-4 h-8 text-xs"
               >
-                <Plus className="w-5 h-5 mr-2" />
+                <Plus className="w-3.5 h-3.5 mr-1" />
                 Create Role
               </Button>
             </div>
@@ -153,47 +152,36 @@ const HomePage = () => {
 
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-6xl mx-auto space-y-10">
-        {/* Hero */}
-        <div className="text-center space-y-3 animate-fade-up">
-          <h1 className="text-4xl font-bold gradient-heading">
-            Your Team
-          </h1>
-          <p className="text-muted-foreground max-w-lg mx-auto">
-            Assess, grow, and hire across your competency frameworks.
-          </p>
-        </div>
-
-        {/* Stats pill */}
-        <div
-          className="flex items-center justify-center animate-fade-up"
-          style={{ animationDelay: "60ms" }}
-        >
-          <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <ChartNetwork className="w-3.5 h-3.5 text-primary/70" />
-              {totals.roles} {totals.roles === 1 ? "Role" : "Roles"}
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              {totals.members} {totals.members === 1 ? "Member" : "Members"}
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <UserPlus className="w-3.5 h-3.5" />
-              {totals.activeCandidates} Active{" "}
-              {totals.activeCandidates === 1 ? "Candidate" : "Candidates"}
-            </span>
-            {totals.hiredCount > 0 && (
-              <>
-                <div className="w-px h-3.5 bg-border" />
-                <span className="flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" />
-                  {totals.hiredCount} Hired
-                </span>
-              </>
-            )}
+      <div className="relative z-10 max-w-6xl mx-auto space-y-8">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Dashboard</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <ChartNetwork className="w-3 h-3 text-primary/70" />
+                {totals.roles}
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3 h-3" />
+                {totals.members}
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <span className="flex items-center gap-1.5">
+                <UserPlus className="w-3 h-3" />
+                {totals.activeCandidates}
+              </span>
+              {totals.hiredCount > 0 && (
+                <>
+                  <div className="w-px h-3 bg-border" />
+                  <span className="flex items-center gap-1.5">
+                    <Check className="w-3 h-3" />
+                    {totals.hiredCount}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -201,296 +189,213 @@ const HomePage = () => {
         {(teamSnapshot.length > 0 || hiringPipeline.length > 0) && (
           <div
             className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fade-up"
-            style={{ animationDelay: "120ms" }}
+            style={{ animationDelay: "80ms" }}
           >
             {/* Team Snapshot */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-foreground tracking-wide uppercase flex items-center gap-2">
-                  <Users className="w-4 h-4 text-primary/70" />
+              <div className="flex items-center gap-3 mb-6 px-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5">
+                  <Users className="w-3 h-3" />
                   Team
-                  {attentionCount > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs font-normal"
-                    >
-                      {attentionCount} need{attentionCount === 1 ? "s" : ""}{" "}
-                      review
-                    </Badge>
-                  )}
-                </h2>
+                </span>
+                {attentionCount > 0 && (
+                  <Badge variant="secondary" className="text-[11px] h-5 px-1.5 font-normal">
+                    {attentionCount} need{attentionCount === 1 ? "s" : ""} review
+                  </Badge>
+                )}
+                <div className="flex-1 h-px bg-border/40" />
+                <span className="text-[11px] text-muted-foreground/50">{teamSnapshot.length}</span>
               </div>
 
               {teamSnapshot.length === 0 ? (
-                <Card className="relative overflow-hidden">
-                  <div className="h-0.5 bg-gradient-knak" />
-                  <CardContent className="p-6 text-center">
-                    <p className="text-sm text-muted-foreground mb-3">
-                      No team members yet.
-                    </p>
-                    {isAdmin && roles.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          navigate(`/roles/${roles[0]._id}/team`)
-                        }
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1.5" />
-                        Add Member
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl ring-1 ring-border/50 bg-card/40 p-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No team members yet.</p>
+                  {isAdmin && roles.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/roles/${roles[0]._id}/team`)}>
+                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      Add Member
+                    </Button>
+                  )}
+                </div>
               ) : (
-                <Card className="relative overflow-hidden">
-                  <div className="h-0.5 bg-gradient-knak" />
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-border/50">
-                      {sortedTeam.slice(0, 8).map((member) => {
-                        const attention = needsAttention(
-                          member.lastAssessmentDate
-                        );
-                        return (
-                          <Link
-                            key={member._id}
-                            to={
-                              member.roleId
-                                ? `/roles/${member.roleId}/team/${member._id}`
-                                : "#"
-                            }
-                            className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
-                          >
-                            {/* Avatar initial */}
-                            <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
-                                attention
-                                  ? "bg-amber-500/15 text-amber-400"
-                                  : "bg-primary/10 text-primary"
-                              }`}
-                            >
-                              {member.name.charAt(0).toUpperCase()}
-                            </div>
+                <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+                  {sortedTeam.slice(0, 8).map((member, idx) => {
+                    const attention = needsAttention(member.lastAssessmentDate);
+                    return (
+                      <Link
+                        key={member._id}
+                        to={member.roleId ? `/roles/${member.roleId}/team/${member._id}` : "#"}
+                        className={`group relative flex items-center gap-3 px-4 py-3 border-l-2 transition-all duration-200 hover:bg-primary/[0.03] ${
+                          attention ? "border-l-amber-500/40" : "border-l-transparent"
+                        } ${idx > 0 ? "border-t border-border/30" : ""}`}
+                      >
+                        {/* Status dot */}
+                        <span className={`block w-2 h-2 rounded-full shrink-0 ${
+                          attention ? "bg-amber-500 animate-pulse" : "bg-green-500"
+                        }`} />
 
-                            {/* Name + role */}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium truncate">
-                                  {member.name}
-                                </span>
-                                {attention && (
-                                  <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                )}
-                              </div>
-                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                <span className="truncate">
-                                  {member.level}
-                                </span>
-                                {member.roleTitle && (
-                                  <>
-                                    <span className="text-border">·</span>
-                                    <span className="truncate">
-                                      {member.roleTitle}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
+                        {/* Name + level */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium truncate">{member.name}</span>
+                            {attention && <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <span className="truncate">{member.level}</span>
+                            {member.roleTitle && (
+                              <>
+                                <span className="text-border">·</span>
+                                <span className="truncate">{member.roleTitle}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
 
-                            {/* Assessment status */}
-                            <div className="text-right shrink-0">
-                              {member.hasInProgress ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs gap-1 font-normal"
-                                >
-                                  <Clock className="w-3 h-3" />
-                                  In Progress
-                                </Badge>
-                              ) : member.lastAssessmentDate ? (
-                                <span className="text-xs text-muted-foreground">
-                                  {timeAgo(member.lastAssessmentDate)}
-                                </span>
-                              ) : (
-                                <span className="text-xs text-muted-foreground/60">
-                                  Never assessed
-                                </span>
-                              )}
-                            </div>
+                        {/* Assessment status */}
+                        <div className="text-right shrink-0">
+                          {member.hasInProgress ? (
+                            <Badge variant="outline" className="text-[11px] h-5 gap-1 font-normal">
+                              <Clock className="w-3 h-3" />
+                              In Progress
+                            </Badge>
+                          ) : member.lastAssessmentDate ? (
+                            <span className="text-xs text-muted-foreground">{timeAgo(member.lastAssessmentDate)}</span>
+                          ) : (
+                            <span className="text-[11px] text-amber-500/70">Never assessed</span>
+                          )}
+                        </div>
 
-                            <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                          </Link>
-                        );
-                      })}
+                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/50 transition-colors shrink-0" />
+                      </Link>
+                    );
+                  })}
+
+                  {teamSnapshot.length > 8 && (
+                    <div className="px-4 py-2 border-t border-border/30 text-center">
+                      <span className="text-[11px] text-muted-foreground/50">+{teamSnapshot.length - 8} more</span>
                     </div>
-
-                    {teamSnapshot.length > 8 && (
-                      <div className="px-4 py-2.5 border-t border-border/50 text-center">
-                        <span className="text-xs text-muted-foreground">
-                          +{teamSnapshot.length - 8} more members
-                        </span>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  )}
+                </div>
               )}
             </div>
 
             {/* Hiring Pipeline */}
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold text-foreground tracking-wide uppercase flex items-center gap-2">
-                  <UserPlus className="w-4 h-4 text-primary/70" />
+              <div className="flex items-center gap-3 mb-6 px-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5">
+                  <UserPlus className="w-3 h-3" />
                   Pipeline
-                  {hiringPipeline.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-xs font-normal"
-                    >
-                      {hiringPipeline.length} active
-                    </Badge>
-                  )}
-                </h2>
+                </span>
+                {hiringPipeline.length > 0 && (
+                  <Badge variant="secondary" className="text-[11px] h-5 px-1.5 font-normal">
+                    {hiringPipeline.length} active
+                  </Badge>
+                )}
+                <div className="flex-1 h-px bg-border/40" />
+                <span className="text-[11px] text-muted-foreground/50">{hiringPipeline.length}</span>
               </div>
 
               {hiringPipeline.length === 0 ? (
-                <Card className="relative overflow-hidden">
-                  <div className="h-0.5 bg-gradient-knak" />
-                  <CardContent className="p-6 text-center">
-                    <p className="text-sm text-muted-foreground mb-3">
-                      No active candidates.
-                    </p>
-                    {isAdmin && roles.length > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          navigate(`/roles/${roles[0]._id}/hiring`)
-                        }
-                      >
-                        <Plus className="w-3.5 h-3.5 mr-1.5" />
-                        Add Candidate
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
+                <div className="rounded-xl ring-1 ring-border/50 bg-card/40 p-6 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">No active candidates.</p>
+                  {isAdmin && roles.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/roles/${roles[0]._id}/hiring`, { state: { openAddCandidate: true } })}>
+                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      Add Candidate
+                    </Button>
+                  )}
+                </div>
               ) : (
-                <Card className="relative overflow-hidden">
-                  <div className="h-0.5 bg-gradient-knak" />
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-border/50">
-                      {hiringPipeline.slice(0, 8).map((candidate) => (
-                        <Link
-                          key={candidate._id}
-                          to={
-                            candidate.roleId
-                              ? `/roles/${candidate.roleId}/hiring/${candidate._id}`
-                              : "#"
-                          }
-                          className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors group"
-                        >
-                          {/* Avatar initial */}
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-                            {candidate.name.charAt(0).toUpperCase()}
-                          </div>
+                <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+                  {hiringPipeline.slice(0, 8).map((candidate, idx) => (
+                    <Link
+                      key={candidate._id}
+                      to={candidate.roleId ? `/roles/${candidate.roleId}/hiring/${candidate._id}` : "#"}
+                      className={`group relative flex items-center gap-3 px-4 py-3 border-l-2 border-l-transparent transition-all duration-200 hover:bg-primary/[0.03] ${
+                        idx > 0 ? "border-t border-border/30" : ""
+                      }`}
+                    >
+                      {/* Status dot */}
+                      <span className={`block w-2 h-2 rounded-full shrink-0 ${
+                        candidate.isAssessed ? "bg-green-500" : "bg-muted-foreground/30 animate-pulse"
+                      }`} />
 
-                          {/* Name + target role */}
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium truncate block">
-                              {candidate.name}
-                            </span>
-                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <span className="truncate">
-                                {candidate.targetRole}
-                              </span>
-                              {candidate.roleTitle && (
-                                <>
-                                  <span className="text-border">·</span>
-                                  <span className="truncate">
-                                    {candidate.roleTitle}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
+                      {/* Name + target role */}
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-medium truncate block">{candidate.name}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="truncate">{candidate.targetRole}</span>
+                          {candidate.roleTitle && (
+                            <>
+                              <span className="text-border">·</span>
+                              <span className="truncate">{candidate.roleTitle}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
 
-                          {/* Stage + assessment status */}
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Badge
-                              variant="outline"
-                              className="text-xs font-normal"
-                            >
-                              {candidate.stageName}
-                            </Badge>
-                            {candidate.isAssessed ? (
-                              <div className="flex items-center gap-1">
-                                <ClipboardCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                {candidate.score != null && (
-                                  <span className="text-xs text-muted-foreground">
-                                    {candidate.score.toFixed(1)}
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/60">
-                                Pending
-                              </span>
+                      {/* Stage + assessment */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Badge variant="outline" className="text-[11px] h-5 px-1.5 font-normal">
+                          {candidate.stageName}
+                        </Badge>
+                        {candidate.isAssessed ? (
+                          <div className="flex items-center gap-1">
+                            <ClipboardCheck className="w-3 h-3 text-emerald-400" />
+                            {candidate.score != null && (
+                              <span className="text-xs text-muted-foreground">{candidate.score.toFixed(1)}</span>
                             )}
                           </div>
-
-                          <ArrowRight className="w-3.5 h-3.5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                        </Link>
-                      ))}
-                    </div>
-
-                    {hiringPipeline.length > 8 && (
-                      <div className="px-4 py-2.5 border-t border-border/50 text-center">
-                        <span className="text-xs text-muted-foreground">
-                          +{hiringPipeline.length - 8} more candidates
-                        </span>
+                        ) : (
+                          <span className="text-[11px] text-muted-foreground/50">Pending</span>
+                        )}
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
+
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/30 group-hover:text-primary/50 transition-colors shrink-0" />
+                    </Link>
+                  ))}
+
+                  {hiringPipeline.length > 8 && (
+                    <div className="px-4 py-2 border-t border-border/30 text-center">
+                      <span className="text-[11px] text-muted-foreground/50">+{hiringPipeline.length - 8} more</span>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           </div>
         )}
 
         {/* Roles Section */}
-        <div
-          className="animate-fade-up"
-          style={{ animationDelay: "180ms" }}
-        >
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-foreground tracking-wide uppercase flex items-center gap-2">
-              <ChartNetwork className="w-4 h-4 text-primary/70" />
+        <div className="animate-fade-up" style={{ animationDelay: "160ms" }}>
+          <div className="flex items-center gap-3 mb-4 px-1">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 flex items-center gap-1.5">
+              <ChartNetwork className="w-3 h-3" />
               Roles
-            </h2>
+            </span>
+            <div className="flex-1 h-px bg-border/40" />
+            {isAdmin && (
+              <Button
+                onClick={() => setRoleDialogOpen(true)}
+                variant="outline"
+                size="sm"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Create Role
+              </Button>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
             {roles.map((role, index) => (
               <RoleCard
                 key={role._id}
                 role={role}
                 index={index}
                 isAdmin={isAdmin}
+                isFirst={index === 0}
               />
             ))}
-
-            {isAdmin && (
-              <button
-                onClick={() => setRoleDialogOpen(true)}
-                className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
-                style={{ animationDelay: `${roles.length * 100}ms` }}
-              >
-                <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <span className="text-sm font-medium">Create Role</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

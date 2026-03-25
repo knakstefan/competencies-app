@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ManageTab } from "@/components/ManageTab";
 import { LevelsTab } from "@/components/LevelsTab";
 import { CompetencyImportDialog } from "@/components/CompetencyImportDialog";
+import { CompetencyExportDialog } from "@/components/CompetencyExportDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { useRole } from "@/hooks/useRole";
 import { useCompetencies } from "@/hooks/useCompetencies";
@@ -19,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Loader2, Pencil, Eye, Plus, Upload, Sparkles, Layers, ListTree } from "lucide-react";
+import { Loader2, Pencil, Eye, Plus, Upload, Download, Sparkles, Layers, ListTree } from "lucide-react";
 import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { useToast } from "@/hooks/use-toast";
@@ -39,6 +40,7 @@ const CompetenciesPage = () => {
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [formData, setFormData] = useState({ title: "", description: "" });
   const createMutation = useMutation(api.competencies.create);
 
@@ -211,33 +213,44 @@ const CompetenciesPage = () => {
   // Populated state
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-5xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold gradient-heading">Competencies</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            {roleTitle ? `Competency framework for the ${roleTitle} role.` : "Competency framework for this role."}
-          </p>
-        </div>
-
-        {/* Stats pill */}
-        <div className="flex items-center justify-center">
-          <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-primary/70" />
-              {competencies.length} {competencies.length === 1 ? "Competency" : "Competencies"}
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <ListTree className="w-3.5 h-3.5" />
-              {subCompetencies.length} Sub-{subCompetencies.length === 1 ? "competency" : "competencies"}
-            </span>
+      <div className="relative z-10 max-w-7xl mx-auto space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Competencies</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3 h-3 text-primary/70" />
+                {competencies.length}
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <span className="flex items-center gap-1.5">
+                <ListTree className="w-3 h-3" />
+                {subCompetencies.length} sub
+              </span>
+            </div>
           </div>
+          {isAdmin && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setImportDialogOpen(true)}>
+                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                Import
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setExportDialogOpen(true)}>
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export
+              </Button>
+              <Button size="sm" className="rounded-full px-4 h-8 text-xs" onClick={() => setAddDialogOpen(true)}>
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
-        <Tabs defaultValue="manage" className="space-y-6">
-          <div className="flex justify-center">
+        <Tabs defaultValue="manage" className="space-y-4">
+          <div className="flex justify-start">
             <TabsList>
               <TabsTrigger value="manage" className="flex items-center gap-2">
                 <Pencil className="w-3.5 h-3.5" />
@@ -257,6 +270,7 @@ const CompetenciesPage = () => {
               onUpdate={() => {}}
               loading={loading}
               roleId={roleId}
+              hideActions
             />
           </TabsContent>
 
@@ -271,6 +285,23 @@ const CompetenciesPage = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {addDialog}
+
+      {/* Page-level dialogs — rendered outside tabs so they work on any tab */}
+      <CompetencyImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImportComplete={() => {}}
+        roleId={roleId}
+      />
+      <CompetencyExportDialog
+        open={exportDialogOpen}
+        onOpenChange={setExportDialogOpen}
+        competencies={competencies}
+        subCompetencies={subCompetencies}
+        levels={levels}
+      />
     </div>
   );
 };

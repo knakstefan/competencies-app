@@ -137,104 +137,91 @@ const PipelinePage = () => {
 
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-4xl mx-auto space-y-8">
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold gradient-heading">Hiring Stages</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Define interview stages globally. Changes propagate to all roles.
-          </p>
+      <div className="relative z-10 max-w-4xl mx-auto space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Hiring Stages</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <GitBranchPlus className="w-3 h-3 text-primary/70" />
+                {stages.length} {stages.length === 1 ? "stage" : "stages"}
+              </span>
+            </div>
+          </div>
+          {isAdmin && (
+            <Button
+              onClick={() => { setEditingStage(null); setIsEditorOpen(true); }}
+              size="sm"
+              className="rounded-full px-4 h-8 text-xs"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Add Stage
+            </Button>
+          )}
         </div>
 
-        <div className="space-y-3">
-          {stages.map((stage, index) => (
-            <div key={stage._id} className="animate-fade-up" style={{ animationDelay: `${index * 60}ms` }}>
-              <Card className="relative overflow-hidden">
-                <div className="h-0.5 bg-gradient-knak" />
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-semibold text-primary">{index + 1}</span>
-                    </div>
+        {/* Stages list */}
+        <div className="animate-fade-up" style={{ animationDelay: "80ms" }}>
+          <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+            {stages.map((stage, index) => (
+              <div
+                key={stage._id}
+                className={`group flex items-center gap-4 px-4 py-3.5 transition-all duration-200 hover:bg-primary/[0.03] ${
+                  index > 0 ? "border-t border-border/30" : ""
+                }`}
+              >
+                <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-semibold text-primary">{index + 1}</span>
+                </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <h3 className="font-medium text-sm truncate">{stage.title}</h3>
-                        <Badge variant="outline" className="text-xs shrink-0 gap-1">
-                          <Sparkles className="w-3 h-3" /> AI Interview
-                        </Badge>
-                      </div>
-                      {stage.description && (
-                        <p className="text-xs text-muted-foreground truncate">{stage.description}</p>
-                      )}
-                      {(stage.gateMinScore != null || stage.gateMinRatedPct != null) && (
-                        <div className="flex gap-2 mt-1">
-                          {stage.gateMinScore != null && (
-                            <Badge variant="secondary" className="text-xs">
-                              Min score: {stage.gateMinScore}
-                            </Badge>
-                          )}
-                          {stage.gateMinRatedPct != null && (
-                            <Badge variant="secondary" className="text-xs">
-                              Min rated: {stage.gateMinRatedPct}%
-                            </Badge>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {isAdmin && (
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={index === 0}
-                          onClick={() => handleMoveUp(index)}
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={index === stages.length - 1}
-                          onClick={() => handleMoveDown(index)}
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => { setEditingStage(stage); setIsEditorOpen(true); }}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeletingStage(stage)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground truncate">{stage.title}</span>
+                    <Badge variant="outline" className="text-[11px] h-5 px-1.5 shrink-0 gap-1">
+                      <Sparkles className="w-3 h-3" /> AI
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {stage.description && (
+                      <span className="text-xs text-muted-foreground truncate">{stage.description}</span>
                     )}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          ))}
+                  {(stage.gateMinScore != null || stage.gateMinRatedPct != null) && (
+                    <div className="flex gap-1.5 mt-1">
+                      {stage.gateMinScore != null && (
+                        <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
+                          Min: {stage.gateMinScore}
+                        </Badge>
+                      )}
+                      {stage.gateMinRatedPct != null && (
+                        <Badge variant="secondary" className="text-[11px] h-5 px-1.5">
+                          Rated: {stage.gateMinRatedPct}%
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-          {isAdmin && (
-            <button
-              onClick={() => { setEditingStage(null); setIsEditorOpen(true); }}
-              className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border/40 p-4 text-sm text-muted-foreground transition-all hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02]"
-            >
-              <Plus className="w-4 h-4" />
-              Add Stage
-            </button>
-          )}
+                {isAdmin && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={index === 0} onClick={() => handleMoveUp(index)}>
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={index === stages.length - 1} onClick={() => handleMoveDown(index)}>
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => { setEditingStage(stage); setIsEditorOpen(true); }}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeletingStage(stage)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

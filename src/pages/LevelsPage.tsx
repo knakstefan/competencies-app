@@ -135,82 +135,68 @@ const LevelsPage = () => {
     }
 
     return (
-      <div className="space-y-3">
-        {levels.map((level, index) => (
-          <div key={level._id} className="animate-fade-up" style={{ animationDelay: `${index * 60}ms` }}>
-            <Card className="relative overflow-hidden">
-              <div className="h-0.5 bg-gradient-knak" />
-              <CardContent className="p-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                    <span className="text-sm font-semibold text-primary">{index + 1}</span>
-                  </div>
+      <div className="space-y-2">
+        <div className="flex items-center gap-3 px-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            {type === "ic" ? "Individual Contributor" : "Management"}
+          </span>
+          <div className="flex-1 h-px bg-border/40" />
+          <span className="text-[11px] text-muted-foreground/50">{levels.length}</span>
+          {isAdmin && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[11px] text-muted-foreground hover:text-primary px-2"
+              onClick={() => openCreate(type)}
+            >
+              <Plus className="w-3 h-3 mr-1" />
+              Add
+            </Button>
+          )}
+        </div>
+        <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+          {levels.map((level, index) => (
+            <div
+              key={level._id}
+              className={`group flex items-center gap-4 px-4 py-3.5 transition-all duration-200 hover:bg-primary/[0.03] ${
+                index > 0 ? "border-t border-border/30" : ""
+              }`}
+            >
+              <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+                <span className="text-xs font-semibold text-primary">{index + 1}</span>
+              </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="font-medium text-sm truncate">{level.label}</h3>
-                      <Badge variant="outline" className="text-xs shrink-0 font-mono">
-                        {level.key}
-                      </Badge>
-                    </div>
-                    {level.description && (
-                      <p className="text-xs text-muted-foreground line-clamp-2">{level.description}</p>
-                    )}
-                  </div>
-
-                  {isAdmin && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        disabled={index === 0}
-                        onClick={() => handleMoveUp(levels, index)}
-                      >
-                        <ChevronUp className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        disabled={index === levels.length - 1}
-                        onClick={() => handleMoveDown(levels, index)}
-                      >
-                        <ChevronDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => openEdit(level)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeletingLevel(level)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground truncate">{level.label}</span>
+                  <Badge variant="outline" className="text-[11px] h-5 px-1.5 shrink-0 font-mono">
+                    {level.key}
+                  </Badge>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
-        ))}
+                {level.description && (
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{level.description}</p>
+                )}
+              </div>
 
-        {isAdmin && (
-          <button
-            onClick={() => openCreate(type)}
-            className="w-full flex items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border/40 p-4 text-sm text-muted-foreground transition-all hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02]"
-          >
-            <Plus className="w-4 h-4" />
-            Add Level
-          </button>
-        )}
+              {isAdmin && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={index === 0} onClick={() => handleMoveUp(levels, index)}>
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" disabled={index === levels.length - 1} onClick={() => handleMoveDown(levels, index)}>
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEdit(level)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeletingLevel(level)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
     );
   };
@@ -219,16 +205,26 @@ const LevelsPage = () => {
 
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-4xl mx-auto space-y-8">
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold gradient-heading">Job Levels</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Define career levels globally. Changes propagate to all roles.
-          </p>
+      <div className="relative z-10 max-w-4xl mx-auto space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Job Levels</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Layers className="w-3 h-3 text-primary/70" />
+                {icLevels.length} IC
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <span className="flex items-center gap-1.5">
+                {mgmtLevels.length} Mgmt
+              </span>
+            </div>
+          </div>
         </div>
 
         <Tabs defaultValue="ic">
-          <div className="flex justify-center mb-6">
+          <div className="flex justify-start mb-4">
             <TabsList>
               <TabsTrigger value="ic">IC Levels</TabsTrigger>
               <TabsTrigger value="management">Management Levels</TabsTrigger>

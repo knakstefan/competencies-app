@@ -140,15 +140,15 @@ export const TeamMemberForm = ({ onSuccess, editingMember, onCancel, roleId, lev
               required
             />
           </div>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={loading}>
-              {editingMember ? "Update" : "Add"} Member
-            </Button>
-            {editingMember && onCancel && (
+          <div className="flex justify-end gap-2">
+            {onCancel && (
               <Button type="button" variant="outline" onClick={onCancel}>
                 Cancel
               </Button>
             )}
+            <Button type="submit" disabled={loading}>
+              {editingMember ? "Update" : "Add"} Member
+            </Button>
           </div>
         </form>
   );

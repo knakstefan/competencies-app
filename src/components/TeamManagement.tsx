@@ -35,6 +35,8 @@ import {
   Loader2,
   Sparkles,
   ClipboardCheck,
+  Calendar,
+  ChevronRight,
 } from "lucide-react";
 import { Id } from "../../convex/_generated/dataModel";
 import { useRoleLevels } from "@/hooks/useRoleLevels";
@@ -209,142 +211,213 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
     );
   }
 
+  // Assessment status: green (recent <90d), amber (stale >90d), unassessed
+  const getAssessmentStatus = (member: TeamMember) => {
+    if (member.assessmentCount === 0) return "unassessed";
+    if (!member.lastAssessedAt) return "stale";
+    const daysSince = (Date.now() - new Date(member.lastAssessedAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSince > 90 ? "stale" : "current";
+  };
+
+  const statusDot = (status: string) => {
+    if (status === "current") return "bg-green-500";
+    if (status === "stale") return "bg-amber-500";
+    return "bg-muted-foreground/30";
+  };
+
+  const statusBorder = (status: string) => {
+    if (status === "unassessed") return "border-l-amber-500/40";
+    return "border-l-transparent";
+  };
+
+  // Group members by level for section dividers
+  const levelLabels = levels.map((l: any) => l.label);
+  const sortedMembers = [...memberList].sort((a, b) => {
+    const aIdx = levelLabels.indexOf(a.role);
+    const bIdx = levelLabels.indexOf(b.role);
+    if (aIdx !== bIdx) return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+    return a.name.localeCompare(b.name);
+  });
+
+  // Build grouped structure
+  const groups: { level: string; members: TeamMember[] }[] = [];
+  let currentGroup: { level: string; members: TeamMember[] } | null = null;
+  for (const member of sortedMembers) {
+    if (!currentGroup || currentGroup.level !== member.role) {
+      currentGroup = { level: member.role, members: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.members.push(member);
+  }
+
   // Populated state
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold gradient-heading">Team</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Assess team members and track growth over time.
-          </p>
-        </div>
-
-        {/* Stats bar */}
-        <div className="flex items-center justify-center">
-          <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-primary/70" />
-              {memberList.length} {memberList.length === 1 ? "Member" : "Members"}
-            </span>
-            <div className="w-px h-3.5 bg-border" />
-            <span className="flex items-center gap-1.5">
-              <ClipboardCheck className="w-3.5 h-3.5" />
-              {assessedCount} Assessed
-            </span>
-          </div>
-        </div>
-
-        {/* Main content with sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
-        {/* Member cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
-          {memberList.map((member, index) => (
-            <div
-              key={member._id}
-              className="animate-fade-up group"
-              style={{ animationDelay: `${index * 80}ms` }}
-            >
-              <Card
-                className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 cursor-pointer"
-                onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}
-              >
-                <div className="h-0.5 bg-gradient-knak" />
-                <CardContent className="p-5 flex flex-col">
-                  {/* Top row: role badge + actions */}
-                  <div className="flex items-start justify-between mb-3">
-                    <Badge variant="outline" className="text-xs">
-                      {member.role}
-                    </Badge>
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      {isAdmin && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                            >
-                              <MoreVertical className="h-3.5 w-3.5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}>
-                              <SlidersVertical className="h-4 w-4 mr-2" />
-                              Assessment
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => {
-                                setEditingMember(member);
-                                setIsDialogOpen(true);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => setDeletingMember(member)}
-                              className="text-destructive focus:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Name */}
-                  <h3 className="text-lg font-semibold mb-1">
-                    {member.name}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    Started {formatDate(member.startDate)}
-                  </p>
-
-                  {/* Footer: assessment info */}
-                  <div className="mt-auto pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">
-                    {member.assessmentCount > 0 ? (
-                      <>
-                        <Badge variant="secondary" className="text-xs">
-                          {member.assessmentCount} assessment{member.assessmentCount !== 1 ? "s" : ""}
-                        </Badge>
-                        {member.lastAssessedAt && (
-                          <span className="text-xs">
-                            Last: {formatDate(member.lastAssessedAt)}
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground/70">Not yet assessed</span>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
+      <div className="relative z-10 max-w-7xl mx-auto space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Team</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3 h-3 text-primary/70" />
+                {memberList.length}
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <span className="flex items-center gap-1.5">
+                <ClipboardCheck className="w-3 h-3" />
+                {assessedCount} assessed
+              </span>
             </div>
-          ))}
-
-          {/* Add member card */}
+          </div>
           {isAdmin && (
-            <button
+            <Button
               onClick={() => setIsDialogOpen(true)}
-              className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
-              style={{ animationDelay: `${memberList.length * 80}ms` }}
+              size="sm"
+              className="rounded-full px-4 h-8 text-xs"
             >
-              <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
-                <Plus className="w-5 h-5" />
-              </div>
-              <span className="text-sm font-medium">Add Team Member</span>
-            </button>
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Add Member
+            </Button>
           )}
         </div>
 
-        {/* Right sidebar: Team Skill Mapping */}
-        <div className="lg:sticky lg:top-6 lg:self-start">
-          <TeamSkillMapping roleId={roleId} />
-        </div>
+        {/* Main content with sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
+          {/* Member list */}
+          <div className="space-y-6 content-start">
+            {groups.map((group, gIdx) => (
+              <div key={group.level} className="animate-fade-up" style={{ animationDelay: `${gIdx * 100}ms` }}>
+                {/* Level group header */}
+                <div className="flex items-center gap-3 mb-2 px-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                    {group.level}
+                  </span>
+                  <div className="flex-1 h-px bg-border/40" />
+                  <span className="text-[11px] text-muted-foreground/50">
+                    {group.members.length}
+                  </span>
+                </div>
+
+                {/* Member rows */}
+                <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+                  {group.members.map((member, mIdx) => {
+                    const status = getAssessmentStatus(member);
+                    return (
+                      <div
+                        key={member._id}
+                        className={`group relative border-l-2 ${statusBorder(status)} transition-all duration-200 cursor-pointer hover:bg-primary/[0.03] ${
+                          mIdx > 0 ? "border-t border-border/30" : ""
+                        }`}
+                        onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}
+                      >
+                        <div className="flex items-center gap-4 px-4 py-3.5">
+                          {/* Status dot */}
+                          <div className="shrink-0">
+                            <span className={`block w-2 h-2 rounded-full ${statusDot(status)} ${status === "unassessed" ? "animate-pulse" : ""}`} />
+                          </div>
+
+                          {/* Name + level */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold text-foreground truncate">
+                                {member.name}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Calendar className="w-3 h-3" />
+                                Started {formatDate(member.startDate)}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Assessment info */}
+                          <div className="hidden sm:flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                            {member.assessmentCount > 0 ? (
+                              <>
+                                <Badge variant="secondary" className="text-[11px] h-5 px-2">
+                                  {member.assessmentCount} assessment{member.assessmentCount !== 1 ? "s" : ""}
+                                </Badge>
+                                {member.lastAssessedAt && (
+                                  <span className="text-muted-foreground/70">
+                                    {formatDate(member.lastAssessedAt)}
+                                  </span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="text-amber-500/70 text-[11px]">Not assessed</span>
+                            )}
+                          </div>
+
+                          {/* Actions + chevron */}
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {isAdmin && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <MoreVertical className="h-3.5 w-3.5" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/team/${member._id}`)}>
+                                    <SlidersVertical className="h-4 w-4 mr-2" />
+                                    Assessment
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => {
+                                      setEditingMember(member);
+                                      setIsDialogOpen(true);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => setDeletingMember(member)}
+                                    className="text-destructive focus:text-destructive"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
+                            <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-colors" />
+                          </div>
+                        </div>
+
+                        {/* Mobile-only assessment info */}
+                        <div className="sm:hidden px-4 pb-3 pl-10 flex items-center gap-2 text-xs text-muted-foreground">
+                          {member.assessmentCount > 0 ? (
+                            <>
+                              <Badge variant="secondary" className="text-[11px] h-5 px-2">
+                                {member.assessmentCount} assessment{member.assessmentCount !== 1 ? "s" : ""}
+                              </Badge>
+                              {member.lastAssessedAt && (
+                                <span className="text-muted-foreground/70">{formatDate(member.lastAssessedAt)}</span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-amber-500/70 text-[11px]">Not assessed</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Right sidebar: Team Skill Mapping */}
+          <div className="lg:sticky lg:top-6 lg:self-start">
+            <TeamSkillMapping roleId={roleId} />
+          </div>
         </div>
       </div>
 

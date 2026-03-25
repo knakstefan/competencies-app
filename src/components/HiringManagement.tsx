@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
@@ -47,6 +47,7 @@ import {
   CircleCheck,
   Clock,
   CircleX,
+  ChevronRight,
 } from "lucide-react";
 import { isTerminalStage, getStageLabel } from "@/lib/stageUtils";
 import { useRoleLevels } from "@/hooks/useRoleLevels";
@@ -120,11 +121,23 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
   const updateStage = useMutation(api.candidates.updateStage);
   const seedDefaults = useMutation(api.hiringStages.seedDefaults);
 
+  const location = useLocation();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingCandidate, setEditingCandidate] = useState<HiringCandidate | null>(null);
   const [deletingCandidate, setDeletingCandidate] = useState<HiringCandidate | null>(null);
   const [statusFilter, setStatusFilter] = useState<"active" | "hired" | "rejected" | "all">("active");
   const { toast } = useToast();
+
+  // Open add form if navigated with openAddCandidate state
+  const openAddRef = useRef(false);
+  useEffect(() => {
+    if ((location.state as any)?.openAddCandidate && !openAddRef.current) {
+      openAddRef.current = true;
+      setIsFormOpen(true);
+      // Clear the state so it doesn't re-trigger on re-renders
+      window.history.replaceState({}, "");
+    }
+  }, [location.state]);
 
   // Auto-seed default stages if empty
   const seededRef = useRef(false);
@@ -205,6 +218,38 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
     : statusFilter === "rejected"
     ? candidateList.filter((c) => c.currentStage === "rejected")
     : candidateList;
+
+  // Group candidates by stage, ordered by pipeline order (terminal stages last)
+  const stageOrder = (stages || []).map((s) => s._id);
+  const groupedCandidates: { stageKey: string; stageLabel: string; candidates: CandidateWithStatus[] }[] = [];
+  const groupMap = new Map<string, CandidateWithStatus[]>();
+  for (const c of filteredCandidates) {
+    if (!groupMap.has(c.currentStage)) groupMap.set(c.currentStage, []);
+    groupMap.get(c.currentStage)!.push(c);
+  }
+  // Add pipeline stages in order, then terminal stages
+  for (const stageId of stageOrder) {
+    const members = groupMap.get(stageId);
+    if (members && members.length > 0) {
+      groupedCandidates.push({ stageKey: stageId, stageLabel: resolveLabel(stageId), candidates: members });
+      groupMap.delete(stageId);
+    }
+  }
+  // Remaining non-terminal stages (legacy keys)
+  for (const [key, members] of groupMap) {
+    if (!isTerminalStage(key)) {
+      groupedCandidates.push({ stageKey: key, stageLabel: resolveLabel(key), candidates: members });
+    }
+  }
+  // Terminal stages at the end
+  const hiredGroup = groupMap.get("hired");
+  if (hiredGroup && hiredGroup.length > 0) {
+    groupedCandidates.push({ stageKey: "hired", stageLabel: "Hired", candidates: hiredGroup });
+  }
+  const rejectedGroup = groupMap.get("rejected");
+  if (rejectedGroup && rejectedGroup.length > 0) {
+    groupedCandidates.push({ stageKey: "rejected", stageLabel: "Rejected", candidates: rejectedGroup });
+  }
 
   // Empty state
   if (candidateList.length === 0) {
@@ -310,17 +355,69 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
   // Populated state
   return (
     <div className="ambient-glow">
-      <div className="relative z-10 max-w-7xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold gradient-heading">Hiring</h1>
-          <p className="text-muted-foreground max-w-md mx-auto">
-            Track candidates through your hiring pipeline.
-          </p>
+      <div className="relative z-10 max-w-7xl mx-auto space-y-6">
+        {/* Header row */}
+        <div className="flex items-center justify-between gap-4 animate-fade-up">
+          <div className="flex items-center gap-4">
+            <h1 className="text-3xl font-bold gradient-heading">Hiring</h1>
+            <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 ring-1 ring-border/50 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <UserPlus className="w-3 h-3 text-primary/70" />
+                {candidateList.length}
+              </span>
+              <div className="w-px h-3 bg-border" />
+              <button
+                onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
+                className={`flex items-center gap-1 transition-colors ${statusFilter === "active" ? "text-primary" : "hover:text-foreground"}`}
+              >
+                <Clock className="w-3 h-3" />
+                {activeCount}
+              </button>
+              <div className="w-px h-3 bg-border" />
+              <button
+                onClick={() => setStatusFilter(statusFilter === "hired" ? "all" : "hired")}
+                className={`flex items-center gap-1 transition-colors ${statusFilter === "hired" ? "text-primary" : "hover:text-foreground"}`}
+              >
+                <CircleCheck className="w-3 h-3" />
+                {hiredCount}
+              </button>
+              <div className="w-px h-3 bg-border" />
+              <button
+                onClick={() => setStatusFilter(statusFilter === "rejected" ? "all" : "rejected")}
+                className={`flex items-center gap-1 transition-colors ${statusFilter === "rejected" ? "text-primary" : "hover:text-foreground"}`}
+              >
+                <CircleX className="w-3 h-3" />
+                {rejectedCount}
+              </button>
+              {statusFilter !== "all" && (
+                <>
+                  <div className="w-px h-3 bg-border" />
+                  <button
+                    onClick={() => setStatusFilter("all")}
+                    className="hover:text-foreground transition-colors"
+                  >
+                    All
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button
+                onClick={() => setIsFormOpen(true)}
+                size="sm"
+                className="rounded-full px-4 h-8 text-xs"
+              >
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add Candidate
+              </Button>
+            )}
+          </div>
         </div>
 
         <Tabs defaultValue="candidates">
-          <div className="flex justify-center mb-6">
+          <div className="flex justify-start mb-4">
             <TabsList>
               <TabsTrigger value="candidates">Candidates</TabsTrigger>
               {isAdmin && <TabsTrigger value="stages">Hiring Stages</TabsTrigger>}
@@ -328,214 +425,202 @@ export const HiringManagement = ({ isAdmin, roleId }: HiringManagementProps) => 
           </div>
 
           <TabsContent value="candidates">
-            {/* Stats bar */}
-            <div className="flex items-center justify-center mb-8">
-              <div className="inline-flex items-center gap-5 px-6 py-2.5 rounded-full bg-card/60 ring-1 ring-border/50 text-sm text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <UserPlus className="w-3.5 h-3.5 text-primary/70" />
-                  {candidateList.length} {candidateList.length === 1 ? "Candidate" : "Candidates"}
-                </span>
-                <div className="w-px h-3.5 bg-border" />
-                <button
-                  onClick={() => setStatusFilter(statusFilter === "active" ? "all" : "active")}
-                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "active" ? "text-primary" : "hover:text-foreground"}`}
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  {activeCount} Active
-                </button>
-                <div className="w-px h-3.5 bg-border" />
-                <button
-                  onClick={() => setStatusFilter(statusFilter === "hired" ? "all" : "hired")}
-                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "hired" ? "text-primary" : "hover:text-foreground"}`}
-                >
-                  <CircleCheck className="w-3.5 h-3.5" />
-                  {hiredCount} Hired
-                </button>
-                <div className="w-px h-3.5 bg-border" />
-                <button
-                  onClick={() => setStatusFilter(statusFilter === "rejected" ? "all" : "rejected")}
-                  className={`flex items-center gap-1.5 transition-colors ${statusFilter === "rejected" ? "text-primary" : "hover:text-foreground"}`}
-                >
-                  <CircleX className="w-3.5 h-3.5" />
-                  {rejectedCount} Rejected
-                </button>
-                {statusFilter !== "all" && (
-                  <>
-                    <div className="w-px h-3.5 bg-border" />
-                    <button
-                      onClick={() => setStatusFilter("all")}
-                      className="text-xs hover:text-foreground transition-colors"
-                    >
-                      Show all
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
             {/* Main content with sidebar */}
-            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8 mt-8">
-            {/* Candidate cards grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 content-start">
-              {filteredCandidates.map((candidate, index) => (
-                  <div
-                    key={candidate._id}
-                    className="animate-fade-up group"
-                    style={{ animationDelay: `${index * 80}ms` }}
-                  >
-                    <Card
-                      className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 cursor-pointer"
-                      onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
-                    >
-                      <div className="h-0.5 bg-gradient-knak" />
-                      <CardContent className="p-5 flex flex-col">
-                        {/* Top row: stage badge + actions */}
-                        <div className="flex items-start justify-between mb-3">
-                          <Badge
-                            variant={getStageBadgeVariant(candidate.currentStage)}
-                            className={`text-xs ${getStageBadgeClass(candidate.currentStage)}`}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-8">
+              {/* Candidate list grouped by stage */}
+              <div className="space-y-6 content-start">
+                {groupedCandidates.map((group, gIdx) => (
+                  <div key={group.stageKey} className="animate-fade-up" style={{ animationDelay: `${gIdx * 100}ms` }}>
+                    {/* Stage group header */}
+                    <div className="flex items-center gap-3 mb-2 px-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        {group.stageLabel}
+                      </span>
+                      <div className="flex-1 h-px bg-border/40" />
+                      <span className="text-[11px] text-muted-foreground/50">
+                        {group.candidates.length}
+                      </span>
+                    </div>
+
+                    {/* Candidate rows */}
+                    <div className="rounded-xl overflow-hidden ring-1 ring-border/50 bg-card/40">
+                      {group.candidates.map((candidate, mIdx) => {
+                        const isTerminal = isTerminalStage(candidate.currentStage);
+                        const needsAssessment = !isTerminal && !candidate.currentStageCompleted;
+                        return (
+                          <div
+                            key={candidate._id}
+                            className={`group relative border-l-2 transition-all duration-200 cursor-pointer hover:bg-primary/[0.03] ${
+                              needsAssessment ? "border-l-amber-500/40" : isTerminal ? (candidate.currentStage === "hired" ? "border-l-green-500/30" : "border-l-destructive/30") : "border-l-transparent"
+                            } ${mIdx > 0 ? "border-t border-border/30" : ""}`}
+                            onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}
                           >
-                            {resolveLabel(candidate.currentStage)}
-                          </Badge>
-                          <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            {isAdmin && (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                                  >
-                                    <MoreVertical className="h-3.5 w-3.5" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}>
-                                    <SlidersVertical className="h-4 w-4 mr-2" />
-                                    Assessment
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger>
-                                      <ArrowRight className="h-4 w-4 mr-2" />
-                                      Move Stage
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent>
-                                      {stageMenuItems.map((stage) => (
-                                        <DropdownMenuItem
-                                          key={stage.key}
-                                          disabled={candidate.currentStage === stage.key}
-                                          onClick={() => handleStageChange(candidate._id, stage.key)}
-                                        >
-                                          {stage.label}
-                                        </DropdownMenuItem>
-                                      ))}
-                                    </DropdownMenuSubContent>
-                                  </DropdownMenuSub>
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setEditingCandidate(candidate);
-                                      setIsFormOpen(true);
-                                    }}
-                                  >
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Edit
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    onClick={() => setDeletingCandidate(candidate)}
-                                    className="text-destructive focus:text-destructive"
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            )}
-                          </div>
-                        </div>
+                            <div className="flex items-center gap-4 px-4 py-3.5">
+                              {/* Status dot */}
+                              <div className="shrink-0">
+                                <span className={`block w-2 h-2 rounded-full ${
+                                  isTerminal
+                                    ? candidate.currentStage === "hired" ? "bg-green-500" : "bg-destructive"
+                                    : candidate.currentStageCompleted ? "bg-green-500" : "bg-muted-foreground/30 animate-pulse"
+                                }`} />
+                              </div>
 
-                        {/* Name + target role */}
-                        <h3 className="text-lg font-semibold mb-1">
-                          {candidate.name}
-                        </h3>
-                        <p className="text-sm text-muted-foreground mb-3">{candidate.targetRole}</p>
+                              {/* Name + target role */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-semibold text-foreground truncate">
+                                    {candidate.name}
+                                  </span>
+                                  <Badge variant="outline" className="text-[11px] h-5 px-1.5 shrink-0">
+                                    {candidate.targetRole}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  {/* Assessment status inline */}
+                                  {!isTerminal && candidate.currentStageCompleted && (
+                                    <span className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground">
+                                      <Check className="h-3 w-3 text-green-500" />
+                                      Assessed
+                                      {candidate.currentStageScore != null && (
+                                        <span className="text-foreground/70 font-medium ml-0.5">
+                                          {candidate.currentStageScore.toFixed(1)}/5
+                                        </span>
+                                      )}
+                                    </span>
+                                  )}
+                                  {needsAssessment && (
+                                    <span className="hidden sm:block text-[11px] text-amber-500/70">Needs assessment</span>
+                                  )}
+                                </div>
+                              </div>
 
-                        {/* AI recommendation + team fit */}
-                        {(candidate.hiringRecommendation || candidate.teamFitRating) && (
-                          <div className="flex flex-wrap items-center gap-1.5 mb-3">
-                            {candidate.hiringRecommendation && (
-                              <Badge className={`text-xs ${
-                                candidate.hiringRecommendation.includes("Strong Hire") ? "bg-green-600" :
-                                candidate.hiringRecommendation.includes("Hire") && !candidate.hiringRecommendation.includes("No") ? "bg-green-600/80" :
-                                candidate.hiringRecommendation.includes("Lean Hire") ? "bg-yellow-600" :
-                                candidate.hiringRecommendation.includes("Lean No") ? "bg-orange-600" :
-                                "bg-destructive"
-                              }`}>
-                                {candidate.hiringRecommendation}
-                              </Badge>
-                            )}
-                            {candidate.teamFitRating && (
-                              <Badge variant="outline" className={`text-xs ${
-                                candidate.teamFitRating.includes("Strong") ? "border-green-500/50 text-green-500" :
-                                candidate.teamFitRating.includes("Good") ? "border-green-500/40 text-green-500/80" :
-                                candidate.teamFitRating.includes("Partial") ? "border-yellow-500/50 text-yellow-500" :
-                                "border-orange-500/50 text-orange-500"
-                              }`}>
-                                {candidate.teamFitRating}
-                              </Badge>
-                            )}
-                          </div>
-                        )}
+                              {/* AI recommendation badges */}
+                              <div className="hidden md:flex items-center gap-1.5 shrink-0">
+                                {candidate.hiringRecommendation && (
+                                  <Badge className={`text-[11px] h-5 px-1.5 ${
+                                    candidate.hiringRecommendation.includes("Strong Hire") ? "bg-green-600" :
+                                    candidate.hiringRecommendation.includes("Hire") && !candidate.hiringRecommendation.includes("No") ? "bg-green-600/80" :
+                                    candidate.hiringRecommendation.includes("Lean Hire") ? "bg-yellow-600" :
+                                    candidate.hiringRecommendation.includes("Lean No") ? "bg-orange-600" :
+                                    "bg-destructive"
+                                  }`}>
+                                    {candidate.hiringRecommendation}
+                                  </Badge>
+                                )}
+                                {candidate.teamFitRating && (
+                                  <Badge variant="outline" className={`text-[11px] h-5 px-1.5 ${
+                                    candidate.teamFitRating.includes("Strong") ? "border-green-500/50 text-green-500" :
+                                    candidate.teamFitRating.includes("Good") ? "border-green-500/40 text-green-500/80" :
+                                    candidate.teamFitRating.includes("Partial") ? "border-yellow-500/50 text-yellow-500" :
+                                    "border-orange-500/50 text-orange-500"
+                                  }`}>
+                                    {candidate.teamFitRating}
+                                  </Badge>
+                                )}
+                              </div>
 
-                        {/* Footer: assessment status */}
-                        <div className="mt-auto pt-3 border-t border-border/50 flex items-center gap-2 text-sm text-muted-foreground">
-                          {isTerminalStage(candidate.currentStage) ? (
-                            <span className="flex items-center gap-1.5">
-                              <Users className="w-3.5 h-3.5" />
-                              {candidate.currentStage === "hired" ? "Hired" : "Rejected"}
-                            </span>
-                          ) : candidate.currentStageCompleted ? (
-                            <>
-                              <Badge variant="outline" className="text-xs gap-1 font-normal">
-                                <Check className="h-3 w-3" />
-                                Assessed
-                              </Badge>
-                              {candidate.currentStageScore != null && (
-                                <span className="text-xs">
-                                  {candidate.currentStageScore.toFixed(1)}/5
+                              {/* Actions + chevron */}
+                              <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                {isAdmin && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => navigate(`/roles/${roleId}/hiring/${candidate._id}`)}>
+                                        <SlidersVertical className="h-4 w-4 mr-2" />
+                                        Assessment
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSub>
+                                        <DropdownMenuSubTrigger>
+                                          <ArrowRight className="h-4 w-4 mr-2" />
+                                          Move Stage
+                                        </DropdownMenuSubTrigger>
+                                        <DropdownMenuSubContent>
+                                          {stageMenuItems.map((stage) => (
+                                            <DropdownMenuItem
+                                              key={stage.key}
+                                              disabled={candidate.currentStage === stage.key}
+                                              onClick={() => handleStageChange(candidate._id, stage.key)}
+                                            >
+                                              {stage.label}
+                                            </DropdownMenuItem>
+                                          ))}
+                                        </DropdownMenuSubContent>
+                                      </DropdownMenuSub>
+                                      <DropdownMenuItem
+                                        onClick={() => {
+                                          setEditingCandidate(candidate);
+                                          setIsFormOpen(true);
+                                        }}
+                                      >
+                                        <Pencil className="h-4 w-4 mr-2" />
+                                        Edit
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        onClick={() => setDeletingCandidate(candidate)}
+                                        className="text-destructive focus:text-destructive"
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
+                                <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-colors" />
+                              </div>
+                            </div>
+
+                            {/* Mobile-only: AI badges + assessment info */}
+                            <div className="md:hidden px-4 pb-3 pl-10 flex flex-wrap items-center gap-1.5 text-xs">
+                              {candidate.hiringRecommendation && (
+                                <Badge className={`text-[11px] h-5 px-1.5 ${
+                                  candidate.hiringRecommendation.includes("Strong Hire") ? "bg-green-600" :
+                                  candidate.hiringRecommendation.includes("Hire") && !candidate.hiringRecommendation.includes("No") ? "bg-green-600/80" :
+                                  candidate.hiringRecommendation.includes("Lean Hire") ? "bg-yellow-600" :
+                                  candidate.hiringRecommendation.includes("Lean No") ? "bg-orange-600" :
+                                  "bg-destructive"
+                                }`}>
+                                  {candidate.hiringRecommendation}
+                                </Badge>
+                              )}
+                              {!isTerminal && candidate.currentStageCompleted && (
+                                <span className="sm:hidden flex items-center gap-1 text-[11px] text-muted-foreground">
+                                  <Check className="h-3 w-3 text-green-500" />
+                                  {candidate.currentStageScore != null ? `${candidate.currentStageScore.toFixed(1)}/5` : "Assessed"}
                                 </span>
                               )}
-                            </>
-                          ) : (
-                            <span className="text-xs text-muted-foreground/70">Needs assessment</span>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
+                              {needsAssessment && (
+                                <span className="sm:hidden text-[11px] text-amber-500/70">Needs assessment</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 ))}
 
-                {/* Add candidate card */}
-                {isAdmin && (
-                  <button
-                    onClick={() => setIsFormOpen(true)}
-                    className="animate-fade-up group flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-border/40 p-8 text-muted-foreground transition-all duration-300 hover:border-primary/30 hover:text-primary hover:bg-primary/[0.02] min-h-[200px]"
-                    style={{ animationDelay: `${filteredCandidates.length * 80}ms` }}
-                  >
-                    <div className="w-10 h-10 rounded-lg border border-dashed border-current flex items-center justify-center transition-colors group-hover:border-primary/40">
-                      <Plus className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-medium">Add Candidate</span>
-                  </button>
+                {filteredCandidates.length === 0 && (
+                  <div className="py-12 text-center text-sm text-muted-foreground">
+                    No {statusFilter !== "all" ? statusFilter : ""} candidates found.
+                  </div>
                 )}
-            </div>
-
-            {/* Right sidebar: Skills to look for */}
-            <div className="lg:sticky lg:top-6 lg:self-start">
-              <div className="rounded-xl border bg-card p-4">
-                <SkillsRecommendation roleId={roleId} />
               </div>
-            </div>
+
+              {/* Right sidebar: Skills to look for */}
+              <div className="lg:sticky lg:top-6 lg:self-start">
+                <div className="rounded-xl border bg-card p-4">
+                  <SkillsRecommendation roleId={roleId} />
+                </div>
+              </div>
             </div>
           </TabsContent>
 

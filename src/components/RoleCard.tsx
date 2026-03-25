@@ -4,8 +4,8 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Id } from "../../convex/_generated/dataModel";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,7 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChartNetwork, MoreVertical, Pencil, Trash2, Users, UserPlus } from "lucide-react";
+import { ChartNetwork, ChevronRight, MoreVertical, Pencil, Trash2, Users, UserPlus } from "lucide-react";
 import { CreateRoleDialog, EditingRole } from "./CreateRoleDialog";
 
 interface RoleCardProps {
@@ -38,9 +38,10 @@ interface RoleCardProps {
   };
   index: number;
   isAdmin?: boolean;
+  isFirst?: boolean;
 }
 
-export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
+export const RoleCard = ({ role, index, isAdmin, isFirst }: RoleCardProps) => {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const removeMutation = useMutation(api.roles.remove);
@@ -68,87 +69,89 @@ export const RoleCard = ({ role, index, isAdmin }: RoleCardProps) => {
     <>
       <Link
         to={`/roles/${role._id}`}
-        className="block animate-fade-up group"
-        style={{ animationDelay: `${index * 100}ms` }}
+        className={`group relative flex items-center gap-4 px-4 py-3.5 border-l-2 border-l-transparent transition-all duration-200 hover:bg-primary/[0.03] ${
+          !isFirst ? "border-t border-border/30" : ""
+        }`}
       >
-        <Card className="relative overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-primary/5 h-full">
-          {/* Gradient top border */}
-          <div className="h-0.5 bg-gradient-knak" />
+        {/* Type badge */}
+        <Badge
+          variant={role.type === "ic" ? "secondary" : "default"}
+          className={`text-[11px] h-5 px-1.5 shrink-0 ${
+            role.type === "management"
+              ? "bg-primary/10 text-primary hover:bg-primary/20"
+              : ""
+          }`}
+        >
+          {role.type === "ic" ? "IC" : "Mgmt"}
+        </Badge>
 
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-3">
-              <Badge
-                variant={role.type === "ic" ? "secondary" : "default"}
-                className={
-                  role.type === "management"
-                    ? "bg-primary/10 text-primary hover:bg-primary/20"
-                    : ""
-                }
-              >
-                {role.type === "ic" ? "IC" : "Management"}
-              </Badge>
-              <div className="flex items-center gap-1">
-                {isAdmin && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        onClick={(e) => e.preventDefault()}
-                        className="p-1 rounded-md text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted"
-                      >
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" onClick={(e) => e.preventDefault()}>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setEditOpen(true);
-                        }}
-                      >
-                        <Pencil className="w-4 h-4 mr-2" />
-                        Edit Role
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setConfirmOpen(true);
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Role
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </div>
-            </div>
+        {/* Title + description */}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-semibold text-foreground truncate block">
+            {role.title}
+          </span>
+          {role.description && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {role.description}
+            </p>
+          )}
+        </div>
 
-            <h3 className="text-xl font-semibold mb-2">{role.title}</h3>
+        {/* Stats */}
+        <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
+          <span className="flex items-center gap-1">
+            <ChartNetwork className="w-3 h-3" />
+            {role.competencyCount}
+          </span>
+          <span className="flex items-center gap-1">
+            <Users className="w-3 h-3" />
+            {role.memberCount}
+          </span>
+          <span className="flex items-center gap-1">
+            <UserPlus className="w-3 h-3" />
+            {role.candidateCount}
+          </span>
+        </div>
 
-            {role.description && (
-              <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                {role.description}
-              </p>
-            )}
-
-            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-auto pt-4 border-t border-border/50">
-              <span className="flex items-center gap-1.5">
-                <ChartNetwork className="w-3.5 h-3.5" />
-                {role.competencyCount}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5" />
-                {role.memberCount}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <UserPlus className="w-3.5 h-3.5" />
-                {role.candidateCount}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Actions + chevron */}
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.preventDefault()}>
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setEditOpen(true);
+                  }}
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Role
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setConfirmOpen(true);
+                  }}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Role
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <ChevronRight className="w-4 h-4 text-muted-foreground/30 group-hover:text-primary/50 transition-colors" />
+        </div>
       </Link>
 
       <CreateRoleDialog

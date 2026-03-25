@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CompetencyEditor } from "@/components/CompetencyEditor";
 import { CompetencyExportDialog } from "@/components/CompetencyExportDialog";
 import { CompetencyImportDialog } from "@/components/CompetencyImportDialog";
@@ -128,9 +128,19 @@ interface ManageTabProps {
   onUpdate: () => void;
   loading?: boolean;
   roleId?: Id<"roles">;
+  hideActions?: boolean;
+  importOpen?: boolean;
+  onImportOpenChange?: (open: boolean) => void;
+  exportOpen?: boolean;
+  onExportOpenChange?: (open: boolean) => void;
+  addOpen?: boolean;
+  onAddOpenChange?: (open: boolean) => void;
 }
 
-export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = false, roleId }: ManageTabProps) => {
+export const ManageTab = ({
+  competencies, subCompetencies, onUpdate, loading = false, roleId, hideActions,
+  importOpen, onImportOpenChange, exportOpen, onExportOpenChange, addOpen, onAddOpenChange,
+}: ManageTabProps) => {
   const { levels } = useRoleLevels(roleId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCompetency, setEditingCompetency] = useState<Competency | null>(null);
@@ -139,6 +149,21 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
   const [collapsedStates, setCollapsedStates] = useState<Record<string, boolean>>({});
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // Sync external dialog controls with internal state
+  useEffect(() => {
+    if (importOpen) setImportDialogOpen(true);
+  }, [importOpen]);
+  useEffect(() => {
+    if (exportOpen) setExportDialogOpen(true);
+  }, [exportOpen]);
+  useEffect(() => {
+    if (addOpen) {
+      setEditingCompetency(null);
+      setFormData({ title: "", description: "" });
+      setDialogOpen(true);
+    }
+  }, [addOpen]);
   const { toast } = useToast();
 
   const updateOrderMutation = useMutation(api.competencies.updateOrder);
@@ -303,20 +328,22 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
         <ManageTabSkeleton />
       ) : (
         <>
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
-              <Upload className="w-4 h-4" />
-              Import
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
-            <Button size="sm" onClick={openAddDialog}>
-              <Plus className="w-4 h-4" />
-              Add Competency
-            </Button>
-          </div>
+          {!hideActions && (
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
+                <Upload className="w-4 h-4" />
+                Import
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setExportDialogOpen(true)}>
+                <Download className="w-4 h-4" />
+                Export
+              </Button>
+              <Button size="sm" onClick={openAddDialog}>
+                <Plus className="w-4 h-4" />
+                Add Competency
+              </Button>
+            </div>
+          )}
 
           <DndContext
             sensors={sensors}
@@ -336,7 +363,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
                       onUpdate={onUpdate}
                       onEdit={openEditDialog}
                       onDelete={handleDelete}
-                      isCollapsed={collapsedStates[comp._id] || false}
+                      isCollapsed={!!collapsedStates[comp._id]}
                       orderNumber={index + 1}
                       levels={levels}
                     />
@@ -377,7 +404,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
         </>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) onAddOpenChange?.(false); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingCompetency ? "Edit Competency" : "Add New Competency"}</DialogTitle>
@@ -424,7 +451,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
 
       <CompetencyExportDialog
         open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
+        onOpenChange={(open) => { setExportDialogOpen(open); if (!open) onExportOpenChange?.(false); }}
         competencies={competencies}
         subCompetencies={subCompetencies}
         levels={levels}
@@ -432,7 +459,7 @@ export const ManageTab = ({ competencies, subCompetencies, onUpdate, loading = f
 
       <CompetencyImportDialog
         open={importDialogOpen}
-        onOpenChange={setImportDialogOpen}
+        onOpenChange={(open) => { setImportDialogOpen(open); if (!open) onImportOpenChange?.(false); }}
         onImportComplete={onUpdate}
         roleId={roleId}
       />
