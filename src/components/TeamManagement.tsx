@@ -283,7 +283,7 @@ export const TeamManagement = ({ isAdmin, roleId }: TeamManagementProps) => {
         </div>
 
         {/* Main content with sidebar */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-8">
           {/* Member list */}
           <div className="space-y-6 content-start">
             {groups.map((group, gIdx) => (

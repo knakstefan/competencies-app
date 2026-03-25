@@ -274,7 +274,13 @@ export function ProgressionPlanTab(props: TabCommonProps) {
 
         {/* ── Development areas grouped by timeline ── */}
         {timelineGroups.size > 0 && (
-          <Accordion type="multiple" className="space-y-0">
+          <Accordion
+            type="multiple"
+            defaultValue={Array.from(timelineGroups.entries()).flatMap(([timelineLabel, areas]) =>
+              areas.map((_, areaIdx) => `dev-${timelineLabel}-${areaIdx}`)
+            )}
+            className="space-y-0"
+          >
             {Array.from(timelineGroups.entries()).map(([timelineLabel, areas]) => {
               const groupMilestones = milestonesByGroup.get(timelineLabel) || [];
               return (
