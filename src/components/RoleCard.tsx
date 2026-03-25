@@ -73,23 +73,23 @@ export const RoleCard = ({ role, index, isAdmin, isFirst }: RoleCardProps) => {
           !isFirst ? "border-t border-border/30" : ""
         }`}
       >
-        {/* Type badge */}
-        <Badge
-          variant={role.type === "ic" ? "secondary" : "default"}
-          className={`text-[11px] h-5 px-1.5 shrink-0 ${
-            role.type === "management"
-              ? "bg-primary/10 text-primary hover:bg-primary/20"
-              : ""
-          }`}
-        >
-          {role.type === "ic" ? "IC" : "Mgmt"}
-        </Badge>
-
         {/* Title + description */}
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-semibold text-foreground truncate block">
-            {role.title}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground truncate">
+              {role.title}
+            </span>
+            <Badge
+              variant={role.type === "ic" ? "secondary" : "default"}
+              className={`text-[11px] h-5 px-1.5 shrink-0 ${
+                role.type === "management"
+                  ? "bg-primary/10 text-primary hover:bg-primary/20"
+                  : ""
+              }`}
+            >
+              {role.type === "ic" ? "IC" : "Mgmt"}
+            </Badge>
+          </div>
           {role.description && (
             <p className="text-xs text-muted-foreground truncate mt-0.5">
               {role.description}
